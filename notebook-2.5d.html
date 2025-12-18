@@ -32,13 +32,11 @@
 
         /* Canvas для 2.5D рендеринга */
         #notebook-canvas {
-            width: 100%;
-            max-width: 800px;
-            height: 600px;
             margin: 0 auto;
             display: block;
             cursor: grab;
             touch-action: none;
+            background: #2a2a2a;
         }
 
         #notebook-canvas:active {
@@ -354,7 +352,7 @@
             }
 
             #notebook-canvas {
-                height: 60vh;
+                max-height: 60vh !important;
             }
 
             body {
@@ -448,10 +446,17 @@
 
         // Настройка canvas
         function resizeCanvas() {
-            const container = canvas.parentElement;
             const maxWidth = Math.min(800, window.innerWidth - 40);
+            const maxHeight = Math.min(600, window.innerHeight - 200);
+
+            // Устанавливаем внутренние размеры canvas
             canvas.width = maxWidth;
-            canvas.height = Math.min(600, window.innerHeight - 100);
+            canvas.height = maxHeight;
+
+            // Устанавливаем CSS размеры для отображения
+            canvas.style.width = maxWidth + 'px';
+            canvas.style.height = maxHeight + 'px';
+
             renderNotebook();
         }
 
@@ -761,22 +766,36 @@
                 notes[index] = note;
             } else {
                 notes.unshift(note);
+                currentPage = 0; // Переход к новой заметке
             }
 
             saveToStorage();
             cancelEdit();
             renderNotesList();
             updateStats();
+            updatePageIndicator();
+            updateNavigationButtons();
         }
 
         function deleteCurrentNote() {
             if (!confirm('🗑️ Удалить эту заметку?')) return;
 
             notes = notes.filter(n => n.id !== currentNoteId);
+
+            // Обновляем текущую страницу после удаления
+            if (currentPage >= notes.length && currentPage > 0) {
+                currentPage = notes.length - 1;
+            }
+            if (notes.length === 0) {
+                currentPage = 0;
+            }
+
             saveToStorage();
             cancelEdit();
             renderNotesList();
             updateStats();
+            updatePageIndicator();
+            updateNavigationButtons();
         }
 
         function renderNotesList() {
@@ -788,15 +807,18 @@
                         Заметок пока нет
                     </div>
                 `;
-                return;
+                currentPage = 0;
+            } else {
+                container.innerHTML = notes.map(note => `
+                    <div class="note-item" onclick="showEditor(${note.id})">
+                        <div class="note-item-title">${note.title}</div>
+                        <div class="note-item-preview">${note.content.substring(0, 50)}...</div>
+                    </div>
+                `).join('');
             }
 
-            container.innerHTML = notes.map(note => `
-                <div class="note-item" onclick="showEditor(${note.id})">
-                    <div class="note-item-title">${note.title}</div>
-                    <div class="note-item-preview">${note.content.substring(0, 50)}...</div>
-                </div>
-            `).join('');
+            updatePageIndicator();
+            updateNavigationButtons();
         }
 
         function updateStats() {
@@ -888,30 +910,6 @@
             prevBtn.disabled = currentPage === 0;
             nextBtn.disabled = currentPage >= notes.length - 1 || notes.length === 0;
         }
-
-        // Обновляем функции для работы с индикатором страниц
-        const originalRenderNotesList = renderNotesList;
-        renderNotesList = function() {
-            originalRenderNotesList();
-            updatePageIndicator();
-            updateNavigationButtons();
-        };
-
-        const originalSaveNote = saveNote;
-        saveNote = function() {
-            originalSaveNote();
-            updatePageIndicator();
-            updateNavigationButtons();
-        };
-
-        const originalDeleteCurrentNote = deleteCurrentNote;
-        deleteCurrentNote = function() {
-            originalDeleteCurrentNote();
-            currentPage = Math.min(currentPage, notes.length - 1);
-            if (currentPage < 0) currentPage = 0;
-            updatePageIndicator();
-            updateNavigationButtons();
-        };
 
         // Свайп для смены страниц
         let touchStartX = 0;
