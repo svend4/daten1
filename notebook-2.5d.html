@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📓 Блокнот 2.5D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #434343 0%, #000000 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        #app-container {
+            width: 100%;
+            max-width: 1200px;
+            position: relative;
+        }
+
+        /* Canvas для 2.5D рендеринга */
+        #notebook-canvas {
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            margin: 0 auto;
+            display: block;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        #notebook-canvas:active {
+            cursor: grabbing;
+        }
+
+        /* Панель управления */
+        .control-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 15px;
+            padding: 20px;
+            max-width: 350px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .panel-title {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .input-group {
+            margin: 10px 0;
+        }
+
+        .input-group label {
+            color: #fff;
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .input-group input,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .input-group textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .input-group input:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .notes-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 15px 0;
+        }
+
+        .note-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px;
+            margin: 8px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .note-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #667eea;
+            transform: translateX(5px);
+        }
+
+        .note-item-title {
+            color: #fff;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .note-item-preview {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .stats {
+            color: #fff;
+            text-align: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .stats-item {
+            display: inline-block;
+            margin: 0 10px;
+        }
+
+        .stats-number {
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stats-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .editor-panel {
+            display: none;
+        }
+
+        .editor-panel.active {
+            display: block;
+        }
+
+        .hint {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            max-width: 300px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .hint h3 {
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.5);
+            border-radius: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .control-panel {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                max-height: 70vh;
+                overflow-y: auto;
+            }
+
+            .hint {
+                display: none;
+            }
+
+            #notebook-canvas {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <canvas id="notebook-canvas"></canvas>
+
+        <div class="control-panel">
+            <div class="panel-title">📓 Блокнот 2.5D</div>
+
+            <!-- Список заметок -->
+            <div id="listView">
+                <div class="stats">
+                    <div class="stats-item">
+                        <div class="stats-number" id="noteCount">0</div>
+                        <div class="stats-label">Заметок</div>
+                    </div>
+                    <div class="stats-item">
+                        <div class="stats-number" id="wordCount">0</div>
+                        <div class="stats-label">Слов</div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="showEditor()">
+                    ➕ Новая Заметка
+                </button>
+
+                <div class="notes-list" id="notesList">
+                    <div style="color: rgba(255,255,255,0.5); text-align: center; padding: 20px;">
+                        Заметок пока нет
+                    </div>
+                </div>
+
+                <button class="btn btn-success" onclick="exportNotes()">
+                    💾 Экспорт
+                </button>
+            </div>
+
+            <!-- Редактор -->
+            <div id="editorView" class="editor-panel">
+                <div class="input-group">
+                    <label>📌 Заголовок:</label>
+                    <input type="text" id="noteTitle" placeholder="Введите заголовок...">
+                </div>
+
+                <div class="input-group">
+                    <label>✍️ Текст:</label>
+                    <textarea id="noteContent" placeholder="Начните писать..."></textarea>
+                </div>
+
+                <button class="btn btn-primary" onclick="saveNote()">
+                    💾 Сохранить
+                </button>
+                <button class="btn btn-danger" onclick="deleteCurrentNote()" id="deleteBtn" style="display: none;">
+                    🗑️ Удалить
+                </button>
+                <button class="btn" style="background: #666; color: #fff;" onclick="cancelEdit()">
+                    ❌ Отмена
+                </button>
+            </div>
+        </div>
+
+        <div class="hint">
+            <h3>🎮 Управление:</h3>
+            <p>🖱️ Перетаскивайте мышью<br>
+               📄 Заметки на страницах<br>
+               ✨ Эффект перспективы</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('notebook-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Настройка canvas
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            canvas.width = maxWidth;
+            canvas.height = Math.min(600, window.innerHeight - 100);
+            renderNotebook();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Игровые переменные
+        let notes = [];
+        let currentNoteId = null;
+        let currentPage = 0;
+
+        // Параметры блокнота
+        let notebookRotation = 0;
+        let targetRotation = 0;
+        let notebookTilt = 0;
+        let targetTilt = 0;
+
+        // Управление мышью
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // Touch управление
+        let lastTouchX = 0;
+        let lastTouchY = 0;
+
+        // Рендеринг блокнота в 2.5D
+        function renderNotebook() {
+            // Очистка
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+
+            // Плавная интерполяция
+            notebookRotation += (targetRotation - notebookRotation) * 0.1;
+            notebookTilt += (targetTilt - notebookTilt) * 0.1;
+
+            // Применяем перспективу через масштабирование
+            const scale = 1 + Math.sin(notebookTilt) * 0.1;
+            ctx.scale(scale, scale);
+            ctx.rotate(notebookRotation);
+
+            // Размеры блокнота
+            const bookWidth = 350;
+            const bookHeight = 450;
+
+            // Тень блокнота (псевдо-3D)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(-bookWidth / 2 + 10, -bookHeight / 2 + 10, bookWidth, bookHeight);
+
+            // Обложка с градиентом для объёма
+            const coverGradient = ctx.createLinearGradient(-bookWidth / 2, -bookHeight / 2, bookWidth / 2, bookHeight / 2);
+            coverGradient.addColorStop(0, '#8b4513');
+            coverGradient.addColorStop(0.5, '#654321');
+            coverGradient.addColorStop(1, '#4a2511');
+
+            ctx.fillStyle = coverGradient;
+            ctx.fillRect(-bookWidth / 2, -bookHeight / 2, bookWidth, bookHeight);
+
+            // Рельеф обложки
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-bookWidth / 2 + 10, -bookHeight / 2 + 10, bookWidth - 20, bookHeight - 20);
+
+            // Надпись на обложке
+            ctx.fillStyle = '#f4e4c1';
+            ctx.font = 'bold 32px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillText('МОЙ БЛОКНОТ', 0, -100);
+            ctx.font = 'bold 24px Arial';
+            ctx.fillText('2.5D', 0, -60);
+            ctx.shadowBlur = 0;
+
+            // Страницы с эффектом глубины
+            drawPages(bookWidth, bookHeight);
+
+            // Закладка
+            const bookmarkGradient = ctx.createLinearGradient(0, -bookHeight / 2, 0, bookHeight / 2);
+            bookmarkGradient.addColorStop(0, '#ff0000');
+            bookmarkGradient.addColorStop(1, '#990000');
+            ctx.fillStyle = bookmarkGradient;
+            ctx.fillRect(bookWidth / 2 - 25, -bookHeight / 2, 15, bookHeight + 30);
+
+            ctx.restore();
+        }
+
+        // Рисование страниц с перспективой
+        function drawPages(bookWidth, bookHeight) {
+            const pageCount = 5;
+            const pageOffset = 3;
+
+            for (let i = pageCount - 1; i >= 0; i--) {
+                const depth = i * pageOffset;
+                const alpha = 0.3 + (i / pageCount) * 0.7;
+
+                ctx.save();
+
+                // Перспектива - страницы смещаются
+                const perspectiveShift = (pageCount - i) * 2;
+                ctx.translate(-perspectiveShift, -perspectiveShift);
+
+                // Тень страницы
+                ctx.fillStyle = `rgba(0, 0, 0, ${0.2 * alpha})`;
+                ctx.fillRect(-bookWidth / 2 + 15 + depth + 2, -bookHeight / 2 + 15 + depth + 2, bookWidth - 30, bookHeight - 30);
+
+                // Страница
+                const pageGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, bookWidth);
+                pageGradient.addColorStop(0, '#fffef0');
+                pageGradient.addColorStop(1, '#f5f5dc');
+
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = pageGradient;
+                ctx.fillRect(-bookWidth / 2 + 15 + depth, -bookHeight / 2 + 15 + depth, bookWidth - 30, bookHeight - 30);
+
+                // Линии на странице
+                if (i === 0) {
+                    ctx.strokeStyle = 'rgba(200, 200, 200, 0.5)';
+                    ctx.lineWidth = 1;
+                    for (let y = -bookHeight / 2 + 50; y < bookHeight / 2 - 20; y += 30) {
+                        ctx.beginPath();
+                        ctx.moveTo(-bookWidth / 2 + 30, y + depth);
+                        ctx.lineTo(bookWidth / 2 - 30, y + depth);
+                        ctx.stroke();
+                    }
+
+                    // Текст заметки на первой странице
+                    if (notes.length > currentPage) {
+                        drawNoteOnPage(notes[currentPage], bookWidth, bookHeight, depth);
+                    }
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // Рисование текста заметки на странице
+        function drawNoteOnPage(note, bookWidth, bookHeight, depth) {
+            ctx.save();
+            ctx.globalAlpha = 1;
+
+            // Заголовок
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(note.title, 0, -bookHeight / 2 + 60 + depth);
+
+            // Содержимое
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'left';
+
+            const lines = wrapText(note.content, bookWidth - 80);
+            let y = -bookHeight / 2 + 100 + depth;
+
+            lines.slice(0, 12).forEach(line => {
+                ctx.fillText(line, -bookWidth / 2 + 40, y);
+                y += 30;
+            });
+
+            // Дата
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#666';
+            ctx.textAlign = 'right';
+            ctx.fillText(note.date, bookWidth / 2 - 40, bookHeight / 2 - 30 + depth);
+
+            ctx.restore();
+        }
+
+        // Перенос текста
+        function wrapText(text, maxWidth) {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+
+            ctx.font = '16px Arial';
+
+            words.forEach(word => {
+                const testLine = currentLine + word + ' ';
+                const metrics = ctx.measureText(testLine);
+
+                if (metrics.width > maxWidth && currentLine !== '') {
+                    lines.push(currentLine);
+                    currentLine = word + ' ';
+                } else {
+                    currentLine = testLine;
+                }
+            });
+
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+
+            return lines;
+        }
+
+        // Управление мышью
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const deltaX = e.clientX - lastMouseX;
+            const deltaY = e.clientY - lastMouseY;
+
+            targetRotation += deltaX * 0.01;
+            targetTilt += deltaY * 0.005;
+            targetTilt = Math.max(-0.3, Math.min(0.3, targetTilt));
+
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        // Touch управление
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            lastTouchX = touch.clientX;
+            lastTouchY = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+
+            const deltaX = touch.clientX - lastTouchX;
+            const deltaY = touch.clientY - lastTouchY;
+
+            targetRotation += deltaX * 0.01;
+            targetTilt += deltaY * 0.005;
+            targetTilt = Math.max(-0.3, Math.min(0.3, targetTilt));
+
+            lastTouchX = touch.clientX;
+            lastTouchY = touch.clientY;
+        }, { passive: false });
+
+        // Управление заметками
+        function loadNotes() {
+            const saved = localStorage.getItem('notebook25d_notes');
+            if (saved) {
+                notes = JSON.parse(saved);
+            }
+            renderNotesList();
+            updateStats();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('notebook25d_notes', JSON.stringify(notes));
+        }
+
+        function showEditor(noteId = null) {
+            document.getElementById('listView').style.display = 'none';
+            document.getElementById('editorView').classList.add('active');
+
+            if (noteId) {
+                const note = notes.find(n => n.id === noteId);
+                currentNoteId = noteId;
+                document.getElementById('noteTitle').value = note.title;
+                document.getElementById('noteContent').value = note.content;
+                document.getElementById('deleteBtn').style.display = 'block';
+            } else {
+                currentNoteId = null;
+                document.getElementById('noteTitle').value = '';
+                document.getElementById('noteContent').value = '';
+                document.getElementById('deleteBtn').style.display = 'none';
+            }
+        }
+
+        function cancelEdit() {
+            document.getElementById('listView').style.display = 'block';
+            document.getElementById('editorView').classList.remove('active');
+        }
+
+        function saveNote() {
+            const title = document.getElementById('noteTitle').value.trim();
+            const content = document.getElementById('noteContent').value.trim();
+
+            if (!title && !content) {
+                alert('⚠️ Заметка не может быть пустой!');
+                return;
+            }
+
+            const note = {
+                id: currentNoteId || Date.now(),
+                title: title || 'Без названия',
+                content: content,
+                date: new Date().toLocaleString('ru-RU')
+            };
+
+            if (currentNoteId) {
+                const index = notes.findIndex(n => n.id === currentNoteId);
+                notes[index] = note;
+            } else {
+                notes.unshift(note);
+            }
+
+            saveToStorage();
+            cancelEdit();
+            renderNotesList();
+            updateStats();
+        }
+
+        function deleteCurrentNote() {
+            if (!confirm('🗑️ Удалить эту заметку?')) return;
+
+            notes = notes.filter(n => n.id !== currentNoteId);
+            saveToStorage();
+            cancelEdit();
+            renderNotesList();
+            updateStats();
+        }
+
+        function renderNotesList() {
+            const container = document.getElementById('notesList');
+
+            if (notes.length === 0) {
+                container.innerHTML = `
+                    <div style="color: rgba(255,255,255,0.5); text-align: center; padding: 20px;">
+                        Заметок пока нет
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = notes.map(note => `
+                <div class="note-item" onclick="showEditor(${note.id})">
+                    <div class="note-item-title">${note.title}</div>
+                    <div class="note-item-preview">${note.content.substring(0, 50)}...</div>
+                </div>
+            `).join('');
+        }
+
+        function updateStats() {
+            document.getElementById('noteCount').textContent = notes.length;
+
+            const totalWords = notes.reduce((sum, note) => {
+                return sum + note.content.split(/\s+/).filter(w => w).length;
+            }, 0);
+            document.getElementById('wordCount').textContent = totalWords;
+        }
+
+        function exportNotes() {
+            if (notes.length === 0) {
+                alert('📭 Нет заметок для экспорта!');
+                return;
+            }
+
+            let text = '📓 БЛОКНОТ 2.5D\n';
+            text += '═══════════════════════════════\n\n';
+
+            notes.forEach((note, index) => {
+                text += `${index + 1}. ${note.title}\n`;
+                text += `Дата: ${note.date}\n`;
+                text += `───────────────────────────────\n`;
+                text += `${note.content}\n`;
+                text += `═══════════════════════════════\n\n`;
+            });
+
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Блокнот_2.5D_${new Date().toLocaleDateString('ru-RU')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            alert('✅ Заметки экспортированы!');
+        }
+
+        // Анимационный цикл
+        function animate() {
+            renderNotebook();
+            requestAnimationFrame(animate);
+        }
+
+        // Инициализация
+        loadNotes();
+        animate();
+    </script>
+</body>
+</html>
