@@ -2,13 +2,16 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Космический Защитник</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         body {
@@ -19,11 +22,14 @@
             min-height: 100vh;
             font-family: 'Arial', sans-serif;
             overflow: hidden;
+            touch-action: none;
         }
 
         #gameContainer {
             position: relative;
             text-align: center;
+            max-width: 100vw;
+            max-height: 100vh;
         }
 
         canvas {
@@ -31,6 +37,8 @@
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
             background: #000;
             display: block;
+            max-width: 100vw;
+            max-height: 80vh;
         }
 
         #ui {
@@ -146,6 +154,131 @@
             font-size: 16px;
             margin-top: 20px;
         }
+
+        /* Мобильные кнопки управления */
+        #mobileControls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 15px;
+            pointer-events: auto;
+        }
+
+        .control-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(0, 255, 255, 0.3);
+            border: 3px solid #00ffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.1s;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            touch-action: none;
+        }
+
+        .control-btn:active {
+            background: rgba(0, 255, 255, 0.6);
+            transform: scale(0.95);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+        }
+
+        .control-btn.pressed {
+            background: rgba(0, 255, 255, 0.7);
+            box-shadow: 0 0 40px rgba(0, 255, 255, 1);
+        }
+
+        .fire-btn {
+            width: 90px;
+            height: 90px;
+            background: rgba(255, 0, 0, 0.3);
+            border-color: #ff0000;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        }
+
+        .fire-btn:active {
+            background: rgba(255, 0, 0, 0.6);
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.8);
+        }
+
+        .fire-btn.pressed {
+            background: rgba(255, 0, 0, 0.7);
+            box-shadow: 0 0 40px rgba(255, 0, 0, 1);
+        }
+
+        /* Адаптация под маленькие экраны */
+        @media (max-width: 768px) {
+            #ui {
+                font-size: 16px;
+                top: 10px;
+                left: 10px;
+            }
+
+            #startScreen, #gameOver {
+                padding: 20px;
+                max-width: 90vw;
+            }
+
+            #startScreen h1, #gameOver h1 {
+                font-size: 32px;
+            }
+
+            #startScreen p, #gameOver p {
+                font-size: 16px;
+            }
+
+            #startScreen button, #gameOver button {
+                font-size: 18px;
+                padding: 12px 30px;
+            }
+
+            .control-btn {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
+
+            .fire-btn {
+                width: 80px;
+                height: 80px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .control-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+
+            .fire-btn {
+                width: 70px;
+                height: 70px;
+            }
+
+            #mobileControls {
+                bottom: 10px;
+                padding: 0 10px;
+            }
+
+            .control-group {
+                gap: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -162,9 +295,8 @@
             <h1>🚀 КОСМИЧЕСКИЙ ЗАЩИТНИК 🚀</h1>
             <p>Защити Землю от астероидов!</p>
             <p class="control-hint">
-                ⬅️ ➡️ - Движение<br>
-                ПРОБЕЛ - Стрельба<br>
-                A/D - Альтернативное управление
+                💻 Компьютер: ⬅️ ➡️ + ПРОБЕЛ<br>
+                📱 Мобильные: используйте кнопки на экране
             </p>
             <button onclick="startGame()">НАЧАТЬ ИГРУ</button>
         </div>
@@ -174,6 +306,17 @@
             <p>Ваш счёт: <span id="finalScore">0</span></p>
             <p>Уровень: <span id="finalLevel">1</span></p>
             <button onclick="restartGame()">ИГРАТЬ СНОВА</button>
+        </div>
+
+        <!-- Мобильные кнопки управления -->
+        <div id="mobileControls">
+            <div class="control-group">
+                <div class="control-btn" id="leftBtn">⬅️</div>
+                <div class="control-btn" id="rightBtn">➡️</div>
+            </div>
+            <div class="control-group">
+                <div class="control-btn fire-btn" id="fireBtn">🔥</div>
+            </div>
         </div>
     </div>
 
@@ -339,6 +482,171 @@
             keys[e.key] = false;
         });
 
+        // Мобильное управление
+        let touchLeft = false;
+        let touchRight = false;
+        let autoShoot = null;
+
+        // Левая кнопка
+        const leftBtn = document.getElementById('leftBtn');
+        leftBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchLeft = true;
+            leftBtn.classList.add('pressed');
+            keys['ArrowLeft'] = true;
+        });
+        leftBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touchLeft = false;
+            leftBtn.classList.remove('pressed');
+            keys['ArrowLeft'] = false;
+        });
+
+        // Правая кнопка
+        const rightBtn = document.getElementById('rightBtn');
+        rightBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchRight = true;
+            rightBtn.classList.add('pressed');
+            keys['ArrowRight'] = true;
+        });
+        rightBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touchRight = false;
+            rightBtn.classList.remove('pressed');
+            keys['ArrowRight'] = false;
+        });
+
+        // Кнопка огня
+        const fireBtn = document.getElementById('fireBtn');
+        fireBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            fireBtn.classList.add('pressed');
+            if (gameRunning) {
+                shoot();
+                // Автоматическая стрельба при удержании
+                autoShoot = setInterval(() => {
+                    if (gameRunning) shoot();
+                }, 200);
+            }
+        });
+        fireBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            fireBtn.classList.remove('pressed');
+            if (autoShoot) {
+                clearInterval(autoShoot);
+                autoShoot = null;
+            }
+        });
+
+        // Также добавим обработку кликов мышью для кнопок
+        leftBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            touchLeft = true;
+            leftBtn.classList.add('pressed');
+            keys['ArrowLeft'] = true;
+        });
+        leftBtn.addEventListener('mouseup', (e) => {
+            e.preventDefault();
+            touchLeft = false;
+            leftBtn.classList.remove('pressed');
+            keys['ArrowLeft'] = false;
+        });
+
+        rightBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            touchRight = true;
+            rightBtn.classList.add('pressed');
+            keys['ArrowRight'] = true;
+        });
+        rightBtn.addEventListener('mouseup', (e) => {
+            e.preventDefault();
+            touchRight = false;
+            rightBtn.classList.remove('pressed');
+            keys['ArrowRight'] = false;
+        });
+
+        fireBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            fireBtn.classList.add('pressed');
+            if (gameRunning) {
+                shoot();
+                autoShoot = setInterval(() => {
+                    if (gameRunning) shoot();
+                }, 200);
+            }
+        });
+        fireBtn.addEventListener('mouseup', (e) => {
+            e.preventDefault();
+            fireBtn.classList.remove('pressed');
+            if (autoShoot) {
+                clearInterval(autoShoot);
+                autoShoot = null;
+            }
+        });
+
+        // Управление касанием по canvas (движение пальцем)
+        let touchStartX = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            touchStartX = touch.clientX - rect.left;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const touchX = touch.clientX - rect.left;
+
+            // Масштабируем координаты к размеру canvas
+            const scaleX = canvas.width / rect.width;
+            const playerTargetX = touchX * scaleX - player.width / 2;
+
+            // Плавное движение к позиции пальца
+            const dx = playerTargetX - player.x;
+            if (Math.abs(dx) > 5) {
+                player.x += dx * 0.2;
+            }
+
+            // Границы
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) {
+                player.x = canvas.width - player.width;
+            }
+        });
+
+        // Адаптация размера canvas под экран
+        function resizeCanvas() {
+            const container = document.getElementById('gameContainer');
+            const maxWidth = window.innerWidth;
+            const maxHeight = window.innerHeight * 0.8;
+
+            let newWidth = 800;
+            let newHeight = 600;
+
+            // Для мобильных устройств
+            if (maxWidth < 800) {
+                newWidth = maxWidth - 20;
+                newHeight = (newWidth / 800) * 600;
+            }
+
+            if (newHeight > maxHeight) {
+                newHeight = maxHeight;
+                newWidth = (newHeight / 600) * 800;
+            }
+
+            // Устанавливаем размеры через CSS для масштабирования
+            canvas.style.width = newWidth + 'px';
+            canvas.style.height = newHeight + 'px';
+        }
+
+        // Вызываем при загрузке и изменении размера окна
+        window.addEventListener('load', resizeCanvas);
+        window.addEventListener('resize', resizeCanvas);
+
         // Стрельба
         function shoot() {
             bullets.push(new Bullet(player.x + player.width / 2 - 2, player.y));
@@ -386,7 +694,7 @@
             ctx.fill();
 
             // Двигатели
-            if (keys['ArrowLeft'] || keys['a'] || keys['ArrowRight'] || keys['d']) {
+            if (keys['ArrowLeft'] || keys['a'] || keys['ArrowRight'] || keys['d'] || touchLeft || touchRight || player.dx !== 0) {
                 ctx.fillStyle = '#ff6600';
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = '#ff6600';
@@ -578,11 +886,23 @@
         // Перезапуск игры
         function restartGame() {
             document.getElementById('gameOver').style.display = 'none';
+            // Очистка автострельбы
+            if (autoShoot) {
+                clearInterval(autoShoot);
+                autoShoot = null;
+            }
+            // Сброс состояния кнопок
+            leftBtn.classList.remove('pressed');
+            rightBtn.classList.remove('pressed');
+            fireBtn.classList.remove('pressed');
+            touchLeft = false;
+            touchRight = false;
             startGame();
         }
 
         // Инициализация
         createStars();
+        resizeCanvas();
         gameLoop();
     </script>
 </body>
