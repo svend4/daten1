@@ -1359,6 +1359,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/7.0.0/fuse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -2898,6 +2899,106 @@
             }, 2500);
         }
 
+        // 🔍 УЛУЧШЕННЫЙ ПОИСК С FUSE.JS
+        let searchFuse = null;
+        let searchQuery = '';
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function highlightText(text, query) {
+            if (!query) return text;
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return text.replace(regex, '<mark style="background: #ffeb3b; padding: 2px 4px; border-radius: 3px; font-weight: bold;">$1</mark>');
+        }
+
+        function performFuzzySearch(query) {
+            searchQuery = query.toLowerCase().trim();
+            const noteCards = document.querySelectorAll('.note-card');
+
+            if (!searchQuery) {
+                // Показать все заметки
+                noteCards.forEach(card => {
+                    card.style.display = 'block';
+                    // Убрать подсветку
+                    const title = card.querySelector('.note-title');
+                    const content = card.querySelector('.note-content');
+                    if (title) title.innerHTML = title.textContent;
+                    if (content) content.innerHTML = content.textContent;
+                });
+                return;
+            }
+
+            // Собрать данные для Fuse.js из видимых карточек
+            const notesData = Array.from(noteCards).map(card => ({
+                element: card,
+                id: card.dataset.id,
+                title: card.querySelector('.note-title')?.textContent || '',
+                content: card.querySelector('.note-content')?.textContent || '',
+                badges: Array.from(card.querySelectorAll('.badge')).map(b => b.textContent).join(' ')
+            }));
+
+            // Настройка Fuse.js
+            const fuseOptions = {
+                keys: [
+                    { name: 'title', weight: 2 },      // Заголовок важнее
+                    { name: 'content', weight: 1 },    // Содержимое
+                    { name: 'badges', weight: 1.5 }    // Категории и теги
+                ],
+                threshold: 0.4,          // Уровень нечёткости (0 = точное совпадение, 1 = всё подходит)
+                distance: 100,           // Расстояние для поиска
+                includeScore: true,      // Включить оценку релевантности
+                minMatchCharLength: 2    // Минимум 2 символа для поиска
+            };
+
+            searchFuse = new Fuse(notesData, fuseOptions);
+            const results = searchFuse.search(searchQuery);
+
+            // Показать только найденные результаты
+            const foundIds = new Set(results.map(r => r.item.id));
+
+            noteCards.forEach(card => {
+                const noteId = card.dataset.id;
+
+                if (foundIds.has(noteId)) {
+                    card.style.display = 'block';
+
+                    // Подсветка результатов
+                    const title = card.querySelector('.note-title');
+                    const content = card.querySelector('.note-content');
+
+                    if (title) {
+                        const originalText = title.textContent;
+                        title.innerHTML = highlightText(originalText, searchQuery);
+                    }
+
+                    if (content) {
+                        const originalText = content.textContent;
+                        content.innerHTML = highlightText(originalText, searchQuery);
+                    }
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Показать количество результатов
+            const resultCount = results.length;
+            if (resultCount === 0) {
+                showTempNotification(`🔍 Ничего не найдено по запросу "${searchQuery}"`);
+            }
+        }
+
+        const debouncedSearch = debounce(performFuzzySearch, 300);
+
         // 🔗 WIKI-ССЫЛКИ [[название]]
         function processWikiLinks(content) {
             return content.replace(/\[\[([^\]]+)\]\]/g, (match, title) => {
@@ -3709,13 +3810,9 @@
                 loadNotes();
             });
 
-            // Search
+            // Search with Fuse.js fuzzy search + debounce
             document.getElementById('searchInput').addEventListener('input', (e) => {
-                const query = e.target.value.toLowerCase();
-                document.querySelectorAll('.note-card').forEach(card => {
-                    const text = card.textContent.toLowerCase();
-                    card.style.display = text.includes(query) ? 'block' : 'none';
-                });
+                debouncedSearch(e.target.value);
             });
 
             // Theme toggle
