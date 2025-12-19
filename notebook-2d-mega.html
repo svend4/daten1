@@ -1365,19 +1365,26 @@
                         <div class="note-header">
                             <h3 class="note-title">${note.password ? '🔒 ' : ''}${note.title}</h3>
                             <div class="note-actions">
-                                ${note.is_favorite ? '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">⭐</button>' :
-                                  '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">☆</button>'}
-                                <button class="note-action-btn" onclick="editNote(' + note.id + ', event)">✏️</button>
+                                ${note.is_deleted ?
+                                    // Кнопки для корзины
+                                    '<button class="note-action-btn" onclick="restoreFromTrash(' + note.id + '); event.stopPropagation();" title="Восстановить">♻️</button>' +
+                                    '<button class="note-action-btn" onclick="permanentDelete(' + note.id + '); event.stopPropagation();" title="Удалить навсегда" style="color: #f45c43;">🗑️</button>' :
+                                    // Обычные кнопки
+                                    (note.is_favorite ? '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">⭐</button>' :
+                                      '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">☆</button>') +
+                                    '<button class="note-action-btn" onclick="editNote(' + note.id + ', event)">✏️</button>'
+                                }
                             </div>
                         </div>
 
                         <div class="note-badges">
+                            ${note.is_deleted ? '<span class="badge" style="background: #f45c43;">🗑️ В корзине</span>' : ''}
                             ${note.category ? `<span class="badge">🏷️ ${note.category}</span>` : ''}
                             ${tags.map(tag => `<span class="badge">#${tag}</span>`).join('')}
-                            ${note.is_pinned ? '<span class="badge">📌 Закреплено</span>' : ''}
-                            ${note.is_archived ? '<span class="badge">🗄️ Архив</span>' : ''}
-                            ${hasReminder ? '<span class="badge">📅 Напоминание</span>' : ''}
-                            ${note.password ? '<span class="badge">🔒 Защищено</span>' : ''}
+                            ${!note.is_deleted && note.is_pinned ? '<span class="badge">📌 Закреплено</span>' : ''}
+                            ${!note.is_deleted && note.is_archived ? '<span class="badge">🗄️ Архив</span>' : ''}
+                            ${!note.is_deleted && hasReminder ? '<span class="badge">📅 Напоминание</span>' : ''}
+                            ${!note.is_deleted && note.password ? '<span class="badge">🔒 Защищено</span>' : ''}
                         </div>
 
                         <div class="note-content">${contentPreview}${!note.password ? '...' : ''}</div>
@@ -1392,9 +1399,15 @@
 
             // Add click handlers
             document.querySelectorAll('.note-card').forEach(card => {
+                const noteId = parseInt(card.dataset.id);
+                const note = notes.find(n => n.id === noteId);
+
                 card.addEventListener('click', (e) => {
                     if (!e.target.closest('.note-actions')) {
-                        editNote(parseInt(card.dataset.id));
+                        // Не открываем редактор для удаленных заметок
+                        if (note && !note.is_deleted) {
+                            editNote(noteId);
+                        }
                     }
                 });
             });
