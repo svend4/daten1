@@ -1260,12 +1260,21 @@
                 CREATE TABLE IF NOT EXISTS folders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
+                    parent_id INTEGER,
                     name TEXT NOT NULL,
                     color TEXT DEFAULT 'blue',
                     created_at INTEGER NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (parent_id) REFERENCES folders(id)
                 )
             `);
+
+            // Миграция: добавить parent_id для существующих БД
+            try {
+                db.run(`ALTER TABLE folders ADD COLUMN parent_id INTEGER`);
+            } catch (e) {
+                // Столбец уже существует
+            }
 
             // Заметки с ВСЕМИ функциями
             db.run(`
@@ -1508,9 +1517,10 @@
             const folders = result.length > 0 ? result[0].values.map(row => ({
                 id: row[0],
                 user_id: row[1],
-                name: row[2],
-                color: row[3],
-                created_at: row[4]
+                parent_id: row[2],
+                name: row[3],
+                color: row[4],
+                created_at: row[5]
             })) : [];
 
             renderFolders(folders);
@@ -1519,12 +1529,26 @@
 
         function renderFolders(folders) {
             const list = document.getElementById('foldersList');
-            list.innerHTML = folders.map(folder => `
-                <div class="sidebar-item" data-folder="${folder.id}">
-                    📁 ${folder.name}
-                    <span class="sidebar-item-count">${getFolderNoteCount(folder.id)}</span>
-                </div>
-            `).join('');
+
+            // Построить дерево папок
+            const flatFolders = folders.map(f => [f.id, f.name, f.parent_id]);
+            const tree = buildFolderTree(flatFolders);
+
+            // Рендерить дерево
+            function renderFolderTree(folders, indent = 0) {
+                return folders.map(folder => {
+                    const count = getFolderNoteCount(folder.id);
+                    return `
+                        <div class="sidebar-item" data-folder="${folder.id}" style="padding-left: ${10 + indent * 15}px;">
+                            ${'└─'.repeat(Math.min(indent, 1))}${indent > 0 ? ' ' : ''}📁 ${folder.name}
+                            <span class="sidebar-item-count">${count}</span>
+                        </div>
+                        ${folder.children && folder.children.length > 0 ? renderFolderTree(folder.children, indent + 1) : ''}
+                    `;
+                }).join('');
+            }
+
+            list.innerHTML = renderFolderTree(tree);
 
             // Add click handlers
             list.querySelectorAll('.sidebar-item').forEach(item => {
@@ -1541,8 +1565,21 @@
         function updateFolderSelect(folders) {
             const select = document.getElementById('noteFolder');
             const currentValue = select.value;
-            select.innerHTML = '<option value="">Без папки</option>' +
-                folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+
+            // Построить дерево папок
+            const flatFolders = folders.map(f => [f.id, f.name, f.parent_id]);
+            const tree = buildFolderTree(flatFolders);
+
+            // Рендерить дерево в селект
+            function renderFolderOptions(folders, indent = '') {
+                return folders.map(folder => {
+                    return `<option value="${folder.id}">${indent}${folder.name}</option>` +
+                        (folder.children && folder.children.length > 0 ?
+                            renderFolderOptions(folder.children, indent + '  ') : '');
+                }).join('');
+            }
+
+            select.innerHTML = '<option value="">Без папки</option>' + renderFolderOptions(tree);
             select.value = currentValue;
         }
 
@@ -1556,10 +1593,72 @@
             const name = prompt('Введите название папки:');
             if (!name || !name.trim()) return;
 
-            db.run('INSERT INTO folders (user_id, name, created_at) VALUES (?, ?, ?)',
-                [currentUserId, name.trim(), Date.now()]);
+            // Спросить, создать ли вложенную папку
+            const result = db.exec('SELECT id, name, parent_id FROM folders WHERE user_id = ? ORDER BY name ASC', [currentUserId]);
+            let parentId = null;
+
+            if (result.length > 0 && result[0].values.length > 0) {
+                const folders = result[0].values;
+                const makeNested = confirm('Создать вложенную папку?\n\nOK - выбрать родительскую папку\nОтмена - создать в корне');
+
+                if (makeNested) {
+                    let folderList = 'Выберите родительскую папку:\n\n';
+                    const rootFolders = buildFolderTree(folders);
+                    let index = 1;
+                    const folderMap = new Map();
+
+                    function addFoldersToList(folders, indent = '') {
+                        folders.forEach(folder => {
+                            folderList += `${index}. ${indent}${folder.name}\n`;
+                            folderMap.set(index, folder.id);
+                            index++;
+                            if (folder.children && folder.children.length > 0) {
+                                addFoldersToList(folder.children, indent + '  ');
+                            }
+                        });
+                    }
+
+                    addFoldersToList(rootFolders);
+                    const choice = prompt(folderList);
+
+                    if (choice) {
+                        parentId = folderMap.get(parseInt(choice));
+                    }
+                }
+            }
+
+            db.run('INSERT INTO folders (user_id, parent_id, name, created_at) VALUES (?, ?, ?, ?)',
+                [currentUserId, parentId, name.trim(), Date.now()]);
             saveDatabase();
             loadFolders();
+        }
+
+        // Построить дерево папок
+        function buildFolderTree(flatFolders) {
+            const folderMap = new Map();
+            const rootFolders = [];
+
+            // Создать карту всех папок
+            flatFolders.forEach(([id, name, parent_id]) => {
+                folderMap.set(id, { id, name, parent_id, children: [] });
+            });
+
+            // Построить дерево
+            folderMap.forEach(folder => {
+                if (folder.parent_id === null || folder.parent_id === undefined) {
+                    rootFolders.push(folder);
+                } else {
+                    const parent = folderMap.get(folder.parent_id);
+                    if (parent) {
+                        parent.children.push(folder);
+                    } else {
+                        // Если родитель не найден, добавить в корень
+                        rootFolders.push(folder);
+                    }
+                }
+            });
+
+            return rootFolders;
         }
 
         function loadNotes() {
