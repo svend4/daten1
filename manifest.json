@@ -1,0 +1,39 @@
+{
+  "name": "МЕГА Блокнот - 100+ Функций",
+  "short_name": "Блокнот",
+  "description": "Супер-мощный блокнот с 100+ функциями: SQLite, Markdown, Wiki-ссылки, дашборд, экспорт в 5 форматов",
+  "start_url": "/notebook-2d-mega.html",
+  "display": "standalone",
+  "background_color": "#667eea",
+  "theme_color": "#667eea",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📔</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📔</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Новая заметка",
+      "short_name": "Новая",
+      "description": "Создать новую заметку",
+      "url": "/notebook-2d-mega.html?action=new",
+      "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>➕</text></svg>", "sizes": "96x96" }]
+    },
+    {
+      "name": "Дашборд",
+      "short_name": "Дашборд",
+      "description": "Открыть дашборд со статистикой",
+      "url": "/notebook-2d-mega.html?action=dashboard",
+      "icons": [{ "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📊</text></svg>", "sizes": "96x96" }]
+    }
+  ]
+}
