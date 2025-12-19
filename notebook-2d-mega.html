@@ -821,6 +821,75 @@
                 margin-bottom: 15px;
             }
         }
+
+        /* 📊 Таблицы в заметках (GFM Tables) */
+        .note-content table,
+        .preview-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .note-content thead,
+        .preview-content thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .note-content th,
+        .preview-content th {
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            border-right: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .note-content th:last-child,
+        .preview-content th:last-child {
+            border-right: none;
+        }
+
+        .note-content td,
+        .preview-content td {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .note-content td:last-child,
+        .preview-content td:last-child {
+            border-right: none;
+        }
+
+        .note-content tbody tr:hover,
+        .preview-content tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .note-content tbody tr:last-child td,
+        .preview-content tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        [data-theme="dark"] .note-content table,
+        [data-theme="dark"] .preview-content table {
+            background: #2d3748;
+        }
+
+        [data-theme="dark"] .note-content td,
+        [data-theme="dark"] .preview-content td {
+            border-color: #4a5568;
+            color: #e2e8f0;
+        }
+
+        [data-theme="dark"] .note-content tbody tr:hover,
+        [data-theme="dark"] .preview-content tbody tr:hover {
+            background: #374151;
+        }
     </style>
 </head>
 <body>
@@ -1082,10 +1151,24 @@
                     <label class="form-label">✍️ Текст заметки (поддержка Markdown):</label>
                     <textarea class="form-textarea" id="noteContent" placeholder="Начните писать... (поддерживает Markdown)"></textarea>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, - [ ] чеклисты</small>
+                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, - [ ] чеклисты, | таблицы |, [[ссылки]]</small>
                         <small id="wordCount" style="color: #667eea; font-weight: bold;">Слов: 0 | Символов: 0</small>
                     </div>
                     <div id="editorChecklistProgress"></div>
+                    <!-- Размер шрифта -->
+                    <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                        <small style="color: #666;">🔠 Размер шрифта:</small>
+                        <button type="button" onclick="changeFontSize('small')" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px;">A-</button>
+                        <button type="button" onclick="changeFontSize('medium')" class="btn btn-secondary" style="padding: 5px 12px; font-size: 14px;">A</button>
+                        <button type="button" onclick="changeFontSize('large')" class="btn btn-secondary" style="padding: 5px 12px; font-size: 16px;">A+</button>
+                        <small id="currentFontSize" style="color: #667eea; font-weight: bold;">Средний</small>
+                    </div>
+                </div>
+
+                <!-- Обратные ссылки (Backlinks) -->
+                <div id="backlinksSection" style="display: none; margin: 15px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #667eea; border-radius: 5px;">
+                    <h4 style="margin: 0 0 10px 0; color: #667eea; font-size: 14px;">🔗 Обратные ссылки</h4>
+                    <div id="backlinksList" style="font-size: 13px; color: #666;"></div>
                 </div>
 
                 <div class="form-group">
@@ -1163,6 +1246,7 @@
                 loadNotes();
                 updateSidebarCounts();
                 setupEventListeners();
+                applySavedFontSize(); // Применить сохраненный размер шрифта
                 checkReminders();
             } catch (error) {
                 console.error('Error:', error);
@@ -1185,12 +1269,21 @@
                 CREATE TABLE IF NOT EXISTS folders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
+                    parent_id INTEGER,
                     name TEXT NOT NULL,
                     color TEXT DEFAULT 'blue',
                     created_at INTEGER NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (parent_id) REFERENCES folders(id)
                 )
             `);
+
+            // Миграция: добавить parent_id для существующих БД
+            try {
+                db.run(`ALTER TABLE folders ADD COLUMN parent_id INTEGER`);
+            } catch (e) {
+                // Столбец уже существует
+            }
 
             // Заметки с ВСЕМИ функциями
             db.run(`
@@ -1379,6 +1472,37 @@
                     category: 'Задачи',
                     tags: 'задача, todo',
                     color: 'lightgreen'
+                },
+                {
+                    name: '📊 Таблица',
+                    title: 'Таблица: ',
+                    content: `# Таблица с данными
+
+Пример простой таблицы в формате Markdown:
+
+| Название | Описание | Статус | Приоритет |
+|----------|----------|--------|-----------|
+| Задача 1 | Первая задача | ✅ Готово | Высокий |
+| Задача 2 | Вторая задача | 🔄 В работе | Средний |
+| Задача 3 | Третья задача | ⏸️ Ожидание | Низкий |
+
+## Другой пример
+
+| Продукт | Цена | Количество | Сумма |
+|---------|------|------------|-------|
+| Товар А | 100₽ | 2 | 200₽ |
+| Товар Б | 250₽ | 1 | 250₽ |
+| Товар В | 150₽ | 3 | 450₽ |
+| **Итого** | | | **900₽** |
+
+> 💡 **Совет:** Используйте выравнивание с помощью двоеточий:
+> - \`:---\` - по левому краю
+> - \`:---:\` - по центру
+> - \`---:\` - по правому краю
+`,
+                    category: 'Таблицы',
+                    tags: 'таблица, данные',
+                    color: 'lightblue'
                 }
             ];
 
@@ -1402,9 +1526,10 @@
             const folders = result.length > 0 ? result[0].values.map(row => ({
                 id: row[0],
                 user_id: row[1],
-                name: row[2],
-                color: row[3],
-                created_at: row[4]
+                parent_id: row[2],
+                name: row[3],
+                color: row[4],
+                created_at: row[5]
             })) : [];
 
             renderFolders(folders);
@@ -1413,12 +1538,26 @@
 
         function renderFolders(folders) {
             const list = document.getElementById('foldersList');
-            list.innerHTML = folders.map(folder => `
-                <div class="sidebar-item" data-folder="${folder.id}">
-                    📁 ${folder.name}
-                    <span class="sidebar-item-count">${getFolderNoteCount(folder.id)}</span>
-                </div>
-            `).join('');
+
+            // Построить дерево папок
+            const flatFolders = folders.map(f => [f.id, f.name, f.parent_id]);
+            const tree = buildFolderTree(flatFolders);
+
+            // Рендерить дерево
+            function renderFolderTree(folders, indent = 0) {
+                return folders.map(folder => {
+                    const count = getFolderNoteCount(folder.id);
+                    return `
+                        <div class="sidebar-item" data-folder="${folder.id}" style="padding-left: ${10 + indent * 15}px;">
+                            ${'└─'.repeat(Math.min(indent, 1))}${indent > 0 ? ' ' : ''}📁 ${folder.name}
+                            <span class="sidebar-item-count">${count}</span>
+                        </div>
+                        ${folder.children && folder.children.length > 0 ? renderFolderTree(folder.children, indent + 1) : ''}
+                    `;
+                }).join('');
+            }
+
+            list.innerHTML = renderFolderTree(tree);
 
             // Add click handlers
             list.querySelectorAll('.sidebar-item').forEach(item => {
@@ -1435,8 +1574,21 @@
         function updateFolderSelect(folders) {
             const select = document.getElementById('noteFolder');
             const currentValue = select.value;
-            select.innerHTML = '<option value="">Без папки</option>' +
-                folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+
+            // Построить дерево папок
+            const flatFolders = folders.map(f => [f.id, f.name, f.parent_id]);
+            const tree = buildFolderTree(flatFolders);
+
+            // Рендерить дерево в селект
+            function renderFolderOptions(folders, indent = '') {
+                return folders.map(folder => {
+                    return `<option value="${folder.id}">${indent}${folder.name}</option>` +
+                        (folder.children && folder.children.length > 0 ?
+                            renderFolderOptions(folder.children, indent + '  ') : '');
+                }).join('');
+            }
+
+            select.innerHTML = '<option value="">Без папки</option>' + renderFolderOptions(tree);
             select.value = currentValue;
         }
 
@@ -1450,10 +1602,72 @@
             const name = prompt('Введите название папки:');
             if (!name || !name.trim()) return;
 
-            db.run('INSERT INTO folders (user_id, name, created_at) VALUES (?, ?, ?)',
-                [currentUserId, name.trim(), Date.now()]);
+            // Спросить, создать ли вложенную папку
+            const result = db.exec('SELECT id, name, parent_id FROM folders WHERE user_id = ? ORDER BY name ASC', [currentUserId]);
+            let parentId = null;
+
+            if (result.length > 0 && result[0].values.length > 0) {
+                const folders = result[0].values;
+                const makeNested = confirm('Создать вложенную папку?\n\nOK - выбрать родительскую папку\nОтмена - создать в корне');
+
+                if (makeNested) {
+                    let folderList = 'Выберите родительскую папку:\n\n';
+                    const rootFolders = buildFolderTree(folders);
+                    let index = 1;
+                    const folderMap = new Map();
+
+                    function addFoldersToList(folders, indent = '') {
+                        folders.forEach(folder => {
+                            folderList += `${index}. ${indent}${folder.name}\n`;
+                            folderMap.set(index, folder.id);
+                            index++;
+                            if (folder.children && folder.children.length > 0) {
+                                addFoldersToList(folder.children, indent + '  ');
+                            }
+                        });
+                    }
+
+                    addFoldersToList(rootFolders);
+                    const choice = prompt(folderList);
+
+                    if (choice) {
+                        parentId = folderMap.get(parseInt(choice));
+                    }
+                }
+            }
+
+            db.run('INSERT INTO folders (user_id, parent_id, name, created_at) VALUES (?, ?, ?, ?)',
+                [currentUserId, parentId, name.trim(), Date.now()]);
             saveDatabase();
             loadFolders();
+        }
+
+        // Построить дерево папок
+        function buildFolderTree(flatFolders) {
+            const folderMap = new Map();
+            const rootFolders = [];
+
+            // Создать карту всех папок
+            flatFolders.forEach(([id, name, parent_id]) => {
+                folderMap.set(id, { id, name, parent_id, children: [] });
+            });
+
+            // Построить дерево
+            folderMap.forEach(folder => {
+                if (folder.parent_id === null || folder.parent_id === undefined) {
+                    rootFolders.push(folder);
+                } else {
+                    const parent = folderMap.get(folder.parent_id);
+                    if (parent) {
+                        parent.children.push(folder);
+                    } else {
+                        // Если родитель не найден, добавить в корень
+                        rootFolders.push(folder);
+                    }
+                }
+            });
+
+            return rootFolders;
         }
 
         function loadNotes() {
@@ -1549,6 +1763,16 @@
                          data-color="${note.color}"
                          data-id="${note.id}"
                          data-password="${note.password ? 'true' : 'false'}">
+                        ${bulkSelectMode && !note.is_deleted ?
+                            `<div style="padding: 10px 15px; border-bottom: 1px solid #eee; background: #f8f9fa;">
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox"
+                                           onchange="toggleNoteSelection(${note.id}, event)"
+                                           ${selectedNotes.has(note.id) ? 'checked' : ''}
+                                           style="width: 20px; height: 20px; margin-right: 10px; cursor: pointer;">
+                                    <span style="color: #666;">Выбрать заметку</span>
+                                </label>
+                            </div>` : ''}
                         <div class="note-header">
                             <h3 class="note-title">${note.password ? '🔒 ' : ''}${note.title}</h3>
                             <div class="note-actions">
@@ -1723,6 +1947,9 @@
 
             // Обновить счетчик слов
             updateWordCount();
+
+            // Показать обратные ссылки
+            renderBacklinks(id);
 
             // Увеличить счетчик просмотров
             db.run('UPDATE notes SET view_count = view_count + 1 WHERE id = ?', [id]);
@@ -2054,6 +2281,174 @@
             }
         }
 
+        // ☑️ МАССОВЫЕ ОПЕРАЦИИ
+        function toggleBulkMode() {
+            bulkSelectMode = !bulkSelectMode;
+            selectedNotes.clear();
+            document.getElementById('bulkSelectBtn').textContent = bulkSelectMode ? '❌ Отменить' : '☑️ Выбрать';
+            document.getElementById('bulkActionsPanel').style.display = bulkSelectMode ? 'block' : 'none';
+            document.getElementById('selectedCount').textContent = 'Выбрано: 0';
+            loadNotes();
+        }
+
+        function toggleNoteSelection(noteId, event) {
+            event.stopPropagation();
+            if (selectedNotes.has(noteId)) {
+                selectedNotes.delete(noteId);
+            } else {
+                selectedNotes.add(noteId);
+            }
+            document.getElementById('selectedCount').textContent = `Выбрано: ${selectedNotes.size}`;
+            // Обновить чекбокс
+            const checkbox = event.target;
+            checkbox.checked = selectedNotes.has(noteId);
+        }
+
+        function bulkDelete() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для удаления');
+                return;
+            }
+            if (!confirm(`Удалить ${selectedNotes.size} заметок в корзину?`)) return;
+
+            selectedNotes.forEach(id => {
+                db.run('UPDATE notes SET is_deleted = 1 WHERE id = ?', [id]);
+            });
+            saveDatabase();
+            selectedNotes.clear();
+            toggleBulkMode();
+        }
+
+        function bulkMove() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для перемещения');
+                return;
+            }
+            const result = db.exec('SELECT id, name FROM folders WHERE user_id = ?', [currentUserId]);
+            if (result.length === 0 || result[0].values.length === 0) {
+                alert('❌ Сначала создайте папку!');
+                return;
+            }
+            const folders = result[0].values;
+            let list = 'Выберите папку для перемещения:\n\n';
+            folders.forEach(([id, name], i) => {
+                list += `${i + 1}. ${name}\n`;
+            });
+            const choice = prompt(list);
+            if (!choice) return;
+
+            const index = parseInt(choice) - 1;
+            if (index >= 0 && index < folders.length) {
+                const folderId = folders[index][0];
+                selectedNotes.forEach(id => {
+                    db.run('UPDATE notes SET folder_id = ? WHERE id = ?', [folderId, id]);
+                });
+                saveDatabase();
+                selectedNotes.clear();
+                toggleBulkMode();
+            }
+        }
+
+        function bulkAddTag() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для добавления тега');
+                return;
+            }
+            const tag = prompt('Введите тег для добавления:');
+            if (!tag) return;
+
+            selectedNotes.forEach(id => {
+                const result = db.exec('SELECT tags FROM notes WHERE id = ?', [id]);
+                if (result.length > 0 && result[0].values.length > 0) {
+                    const tags = result[0].values[0][0] || '';
+                    const tagsArray = tags ? tags.split(',').map(t => t.trim()) : [];
+                    if (!tagsArray.includes(tag)) {
+                        tagsArray.push(tag);
+                        const newTags = tagsArray.join(', ');
+                        db.run('UPDATE notes SET tags = ? WHERE id = ?', [newTags, id]);
+                    }
+                }
+            });
+            saveDatabase();
+            selectedNotes.clear();
+            toggleBulkMode();
+        }
+
+        function bulkFavorite() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для добавления в избранное');
+                return;
+            }
+            selectedNotes.forEach(id => {
+                db.run('UPDATE notes SET is_favorite = 1 WHERE id = ?', [id]);
+            });
+            saveDatabase();
+            selectedNotes.clear();
+            toggleBulkMode();
+        }
+
+        // 🔗 ОБРАТНЫЕ ССЫЛКИ (BACKLINKS)
+        function findBacklinks(noteTitle) {
+            if (!noteTitle) return [];
+
+            // Ищем все заметки, которые содержат [[noteTitle]]
+            const pattern = `[[${noteTitle}]]`;
+            const result = db.exec(
+                'SELECT id, title, content FROM notes WHERE user_id = ? AND is_deleted = 0 AND content LIKE ?',
+                [currentUserId, '%' + pattern + '%']
+            );
+
+            if (result.length === 0 || result[0].values.length === 0) return [];
+
+            return result[0].values.map(([id, title, content]) => ({
+                id,
+                title,
+                content
+            }));
+        }
+
+        function renderBacklinks(noteId) {
+            const backlinksSection = document.getElementById('backlinksSection');
+            const backlinksList = document.getElementById('backlinksList');
+
+            if (!noteId) {
+                backlinksSection.style.display = 'none';
+                return;
+            }
+
+            // Получить заголовок текущей заметки
+            const result = db.exec('SELECT title FROM notes WHERE id = ?', [noteId]);
+            if (result.length === 0 || result[0].values.length === 0) {
+                backlinksSection.style.display = 'none';
+                return;
+            }
+
+            const noteTitle = result[0].values[0][0];
+            const backlinks = findBacklinks(noteTitle);
+
+            if (backlinks.length === 0) {
+                backlinksSection.style.display = 'none';
+                return;
+            }
+
+            backlinksSection.style.display = 'block';
+            backlinksList.innerHTML = `
+                <p style="margin: 0 0 10px 0; color: #495057;">
+                    Найдено ссылок на эту заметку: <strong>${backlinks.length}</strong>
+                </p>
+                <ul style="margin: 0; padding-left: 20px; list-style: none;">
+                    ${backlinks.map(link => `
+                        <li style="margin-bottom: 8px;">
+                            <a href="#" onclick="closeEditor(); editNote(${link.id}); return false;"
+                               style="color: #667eea; text-decoration: none; font-weight: 500;">
+                                📝 ${link.title}
+                            </a>
+                        </li>
+                    `).join('')}
+                </ul>
+            `;
+        }
+
         // 🎨 Highlight.js и Mermaid инициализация
         if (typeof hljs !== 'undefined') {
             marked.setOptions({
@@ -2072,13 +2467,14 @@
 
         // Функции экспорта
         function exportAllNotes() {
-            const format = prompt('Выберите формат экспорта:\n1 - TXT\n2 - HTML\n3 - JSON\n4 - SQLite DB\n5 - PDF');
+            const format = prompt('Выберите формат экспорта:\n1 - TXT\n2 - HTML\n3 - JSON\n4 - SQLite DB\n5 - PDF\n6 - Markdown');
 
             if (format === '1') exportToTXT();
             else if (format === '2') exportToHTML();
             else if (format === '3') exportToJSON();
             else if (format === '4') exportDB();
             else if (format === '5') exportToPDF();
+            else if (format === '6') exportToMarkdown();
         }
 
         function exportToTXT() {
@@ -2097,6 +2493,40 @@
             });
 
             downloadFile('notes.txt', txt, 'text/plain');
+        }
+
+        function exportToMarkdown() {
+            const result = db.exec('SELECT title, content, category, tags, created_at FROM notes WHERE user_id = ? AND is_deleted = 0 ORDER BY created_at DESC',
+                [currentUserId]);
+
+            if (result.length === 0) return alert('Нет заметок для экспорта');
+
+            let markdown = '# 📔 Мои заметки\n\n';
+            markdown += `> Экспортировано: ${new Date().toLocaleString('ru-RU')}\n\n`;
+            markdown += `> Всего заметок: ${result[0].values.length}\n\n`;
+            markdown += '---\n\n';
+
+            result[0].values.forEach(([title, content, category, tags, createdAt]) => {
+                // Заголовок заметки
+                markdown += `## ${title}\n\n`;
+
+                // Метаданные
+                markdown += `**📅 Дата:** ${new Date(createdAt).toLocaleString('ru-RU')}  \n`;
+                if (category) markdown += `**🏷️ Категория:** ${category}  \n`;
+                if (tags) {
+                    const tagsArr = tags.split(',').map(t => t.trim());
+                    markdown += `**🏷️ Теги:** ${tagsArr.map(t => `\`${t}\``).join(', ')}  \n`;
+                }
+                markdown += '\n';
+
+                // Содержимое (уже в Markdown формате)
+                markdown += content + '\n\n';
+
+                // Разделитель
+                markdown += '---\n\n';
+            });
+
+            downloadFile('notes.md', markdown, 'text/markdown');
         }
 
         function exportToHTML() {
@@ -2366,6 +2796,7 @@
                 selectColor(template[7]); // color
                 document.getElementById('editorModal').classList.add('active');
                 updateWordCount();
+                renderBacklinks(null); // Скрыть обратные ссылки для нового документа
             }
         }
 
@@ -2498,6 +2929,41 @@
             }
         }
 
+        // 🔠 Изменение размера шрифта в редакторе
+        function changeFontSize(size) {
+            const textarea = document.getElementById('noteContent');
+            const sizeLabel = document.getElementById('currentFontSize');
+
+            let fontSize, label;
+            switch(size) {
+                case 'small':
+                    fontSize = '14px';
+                    label = 'Маленький';
+                    break;
+                case 'large':
+                    fontSize = '18px';
+                    label = 'Большой';
+                    break;
+                case 'medium':
+                default:
+                    fontSize = '16px';
+                    label = 'Средний';
+                    break;
+            }
+
+            textarea.style.fontSize = fontSize;
+            sizeLabel.textContent = label;
+
+            // Сохранить настройку
+            localStorage.setItem('editorFontSize', size);
+        }
+
+        // Применить сохраненный размер шрифта при загрузке
+        function applySavedFontSize() {
+            const savedSize = localStorage.getItem('editorFontSize') || 'medium';
+            changeFontSize(savedSize);
+        }
+
         // Корзина - восстановление заметок
         function restoreFromTrash(id) {
             if (!confirm('Восстановить заметку из корзины?')) return;
@@ -2523,6 +2989,7 @@
                 document.getElementById('printNoteBtn').style.display = 'none';
                 document.getElementById('editorModal').classList.add('active');
                 updateWordCount(); // Сбросить счетчик
+                renderBacklinks(null); // Скрыть обратные ссылки
             });
 
             document.getElementById('quickAdd').addEventListener('click', () => {
@@ -2610,6 +3077,14 @@
 
             // Switch User
             document.getElementById('switchUserBtn').addEventListener('click', switchUser);
+
+            // Bulk operations
+            document.getElementById('bulkSelectBtn').addEventListener('click', toggleBulkMode);
+            document.getElementById('bulkDeleteBtn').addEventListener('click', bulkDelete);
+            document.getElementById('bulkMoveBtn').addEventListener('click', bulkMove);
+            document.getElementById('bulkTagBtn').addEventListener('click', bulkAddTag);
+            document.getElementById('bulkFavoriteBtn').addEventListener('click', bulkFavorite);
+            document.getElementById('bulkCancelBtn').addEventListener('click', toggleBulkMode);
         }
 
         // Функция смены пользователя
