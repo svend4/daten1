@@ -960,14 +960,22 @@
                 <div class="sidebar-item" id="switchUserBtn">
                     👤 Сменить профиль
                 </div>
+                <div class="sidebar-item" id="notificationsBtn">
+                    🔔 Уведомления: <span id="notificationStatus">⏸️ Не настроены</span>
+                </div>
             </div>
         </aside>
 
         <!-- Main content -->
         <main class="main-content">
             <div class="top-bar">
-                <input type="text" class="search-bar" id="searchInput" placeholder="🔍 Поиск заметок...">
-                
+                <div style="display: flex; gap: 10px; flex: 1;">
+                    <input type="text" class="search-bar" id="searchInput" placeholder="🔍 Поиск заметок..." style="flex: 1;">
+                    <button class="btn btn-secondary" id="advancedSearchBtn" title="Расширенный поиск">
+                        🔎 Фильтры
+                    </button>
+                </div>
+
                 <div class="toolbar">
                     <select class="form-select" id="sortSelect" style="width: auto;">
                         <option value="created_desc">Новые первым</option>
@@ -1084,6 +1092,78 @@
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
                 <h3 style="margin-bottom: 15px;">☁️ Облако тегов</h3>
                 <div id="tagCloud" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Search Modal -->
+    <div class="modal" id="advancedSearchModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">🔎 Расширенный поиск</h2>
+                <button class="close-btn" id="closeAdvancedSearch">×</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div class="form-group">
+                    <label class="form-label">📅 Период создания:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="date" class="form-input" id="filterDateFrom" placeholder="От">
+                        <input type="date" class="form-input" id="filterDateTo" placeholder="До">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">🏷️ Категория:</label>
+                    <select class="form-select" id="filterCategory">
+                        <option value="">Все категории</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">🎨 Цвет:</label>
+                    <select class="form-select" id="filterColor">
+                        <option value="">Все цвета</option>
+                        <option value="white">⚪ Белый</option>
+                        <option value="yellow">🟡 Желтый</option>
+                        <option value="pink">🟣 Розовый</option>
+                        <option value="blue">🔵 Синий</option>
+                        <option value="green">🟢 Зеленый</option>
+                        <option value="purple">🟣 Фиолетовый</option>
+                        <option value="orange">🟠 Оранжевый</option>
+                        <option value="red">🔴 Красный</option>
+                        <option value="teal">🔷 Бирюзовый</option>
+                        <option value="indigo">🟦 Индиго</option>
+                        <option value="lime">🟩 Лайм</option>
+                        <option value="gray">⚫ Серый</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">🏷️ Теги (через запятую):</label>
+                    <input type="text" class="form-input" id="filterTags" placeholder="тег1, тег2, тег3">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">📋 Дополнительные фильтры:</label>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="filterOnlyFavorites">
+                        <span>⭐ Только избранные</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="filterOnlyPinned">
+                        <span>📌 Только закрепленные</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="filterWithReminders">
+                        <span>📅 С напоминаниями</span>
+                    </label>
+                </div>
+
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" id="clearFiltersBtn">🗑️ Сбросить</button>
+                    <button type="button" class="btn btn-primary" id="applyFiltersBtn">✅ Применить</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1247,6 +1327,7 @@
                 updateSidebarCounts();
                 setupEventListeners();
                 applySavedFontSize(); // Применить сохраненный размер шрифта
+                updateNotificationStatus(); // Обновить статус уведомлений
                 checkReminders();
             } catch (error) {
                 console.error('Error:', error);
@@ -2002,14 +2083,7 @@
                 const now = Date.now();
                 result[0].values.forEach(([id, title, reminderDate]) => {
                     if (reminderDate <= now && reminderDate > now - 60000) { // В течение последней минуты
-                        if (Notification.permission === 'granted') {
-                            new Notification('Напоминание: ' + title, {
-                                body: 'Проверьте вашу заметку',
-                                icon: '📔'
-                            });
-                        } else {
-                            alert('📅 Напоминание: ' + title);
-                        }
+                        showNotification(id, title);
                     }
                 });
             }
@@ -2018,9 +2092,235 @@
             setTimeout(checkReminders, 30000);
         }
 
-        // Запросить разрешение на уведомления
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
+        // 🔔 Улучшенная функция показа уведомлений
+        function showNotification(noteId, noteTitle) {
+            if (Notification.permission === 'granted') {
+                const notification = new Notification('📔 Напоминание', {
+                    body: noteTitle,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">📔</text></svg>',
+                    badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">📔</text></svg>',
+                    tag: 'note-reminder-' + noteId,
+                    requireInteraction: true,
+                    vibrate: [200, 100, 200]
+                });
+
+                // Клик по уведомлению → открыть заметку
+                notification.onclick = function() {
+                    window.focus();
+                    editNote(noteId);
+                    notification.close();
+                };
+            } else if (Notification.permission === 'default') {
+                // Запросить разрешение
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        showNotification(noteId, noteTitle);
+                    } else {
+                        alert('📅 Напоминание: ' + noteTitle);
+                    }
+                });
+            } else {
+                // Разрешение отклонено - показать alert
+                alert('📅 Напоминание: ' + noteTitle);
+            }
+        }
+
+        // Запросить разрешение на уведомления при первом запуске
+        function requestNotificationPermission() {
+            if ('Notification' in window) {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        updateNotificationStatus();
+                        if (permission === 'granted') {
+                            alert('✅ Уведомления включены! Вы будете получать напоминания о заметках.');
+                        }
+                    });
+                } else if (Notification.permission === 'granted') {
+                    alert('✅ Уведомления уже включены!');
+                } else {
+                    alert('❌ Уведомления заблокированы. Разрешите уведомления в настройках браузера.');
+                }
+            } else {
+                alert('❌ Ваш браузер не поддерживает уведомления.');
+            }
+        }
+
+        // Обновить статус уведомлений в UI
+        function updateNotificationStatus() {
+            const statusElement = document.getElementById('notificationStatus');
+            if (!statusElement) return;
+
+            if (!('Notification' in window)) {
+                statusElement.innerHTML = '❌ Не поддерживается';
+                statusElement.style.color = '#999';
+            } else if (Notification.permission === 'granted') {
+                statusElement.innerHTML = '✅ Включены';
+                statusElement.style.color = '#4caf50';
+            } else if (Notification.permission === 'denied') {
+                statusElement.innerHTML = '❌ Заблокированы';
+                statusElement.style.color = '#f44336';
+            } else {
+                statusElement.innerHTML = '⏸️ Не настроены';
+                statusElement.style.color = '#ff9800';
+            }
+        }
+
+        // 🔎 РАСШИРЕННЫЙ ПОИСК
+        let advancedFilters = {};
+
+        function openAdvancedSearch() {
+            // Заполнить список категорий
+            populateCategoriesFilter();
+            document.getElementById('advancedSearchModal').classList.add('active');
+        }
+
+        function populateCategoriesFilter() {
+            const result = db.exec('SELECT DISTINCT category FROM notes WHERE user_id = ? AND is_deleted = 0 AND category IS NOT NULL AND category != ""',
+                [currentUserId]);
+
+            const select = document.getElementById('filterCategory');
+            let options = '<option value="">Все категории</option>';
+
+            if (result.length > 0) {
+                result[0].values.forEach(([category]) => {
+                    options += `<option value="${category}">${category}</option>`;
+                });
+            }
+
+            select.innerHTML = options;
+        }
+
+        function applyAdvancedFilters() {
+            advancedFilters = {
+                dateFrom: document.getElementById('filterDateFrom').value,
+                dateTo: document.getElementById('filterDateTo').value,
+                category: document.getElementById('filterCategory').value,
+                color: document.getElementById('filterColor').value,
+                tags: document.getElementById('filterTags').value,
+                onlyFavorites: document.getElementById('filterOnlyFavorites').checked,
+                onlyPinned: document.getElementById('filterOnlyPinned').checked,
+                withReminders: document.getElementById('filterWithReminders').checked
+            };
+
+            document.getElementById('advancedSearchModal').classList.remove('active');
+            loadNotesWithFilters();
+        }
+
+        function loadNotesWithFilters() {
+            let query = 'SELECT * FROM notes WHERE user_id = ? AND is_deleted = 0';
+            let params = [currentUserId];
+
+            // Применяем фильтры по дате
+            if (advancedFilters.dateFrom) {
+                const fromDate = new Date(advancedFilters.dateFrom).getTime();
+                query += ' AND created_at >= ?';
+                params.push(fromDate);
+            }
+
+            if (advancedFilters.dateTo) {
+                const toDate = new Date(advancedFilters.dateTo).getTime() + 86400000; // +1 день
+                query += ' AND created_at <= ?';
+                params.push(toDate);
+            }
+
+            // Фильтр по категории
+            if (advancedFilters.category) {
+                query += ' AND category = ?';
+                params.push(advancedFilters.category);
+            }
+
+            // Фильтр по цвету
+            if (advancedFilters.color) {
+                query += ' AND color = ?';
+                params.push(advancedFilters.color);
+            }
+
+            // Фильтр по тегам
+            if (advancedFilters.tags) {
+                const tagsArray = advancedFilters.tags.split(',').map(t => t.trim());
+                tagsArray.forEach(tag => {
+                    query += ' AND tags LIKE ?';
+                    params.push('%' + tag + '%');
+                });
+            }
+
+            // Фильтр "Только избранные"
+            if (advancedFilters.onlyFavorites) {
+                query += ' AND is_favorite = 1';
+            }
+
+            // Фильтр "Только закрепленные"
+            if (advancedFilters.onlyPinned) {
+                query += ' AND is_pinned = 1';
+            }
+
+            // Фильтр "С напоминаниями"
+            if (advancedFilters.withReminders) {
+                query += ' AND reminder_date IS NOT NULL';
+            }
+
+            // Сортировка
+            if (currentSort === 'created_desc') query += ' ORDER BY created_at DESC';
+            else if (currentSort === 'created_asc') query += ' ORDER BY created_at ASC';
+            else if (currentSort === 'title_asc') query += ' ORDER BY title ASC';
+            else if (currentSort === 'title_desc') query += ' ORDER BY title DESC';
+            else if (currentSort === 'updated_desc') query += ' ORDER BY updated_at DESC';
+
+            const result = db.exec(query, params);
+
+            if (result.length > 0) {
+                const notes = result[0].values.map(row => ({
+                    id: row[0],
+                    user_id: row[1],
+                    folder_id: row[2],
+                    title: row[3],
+                    content: row[4],
+                    category: row[5],
+                    tags: row[6],
+                    color: row[7],
+                    is_favorite: row[8],
+                    is_pinned: row[9],
+                    is_archived: row[10],
+                    is_deleted: row[11],
+                    password: row[12],
+                    reminder_date: row[13],
+                    view_count: row[14],
+                    created_at: row[15],
+                    updated_at: row[16]
+                }));
+
+                renderNotes(notes);
+            } else {
+                renderNotes([]);
+            }
+
+            // Показать индикатор активных фильтров
+            const filtersCount = Object.values(advancedFilters).filter(v => v && v !== '').length;
+            const advSearchBtn = document.getElementById('advancedSearchBtn');
+            if (filtersCount > 0) {
+                advSearchBtn.textContent = `🔎 Фильтры (${filtersCount})`;
+                advSearchBtn.style.background = '#667eea';
+                advSearchBtn.style.color = 'white';
+            } else {
+                advSearchBtn.textContent = '🔎 Фильтры';
+                advSearchBtn.style.background = '';
+                advSearchBtn.style.color = '';
+            }
+        }
+
+        function clearAdvancedFilters() {
+            advancedFilters = {};
+            document.getElementById('filterDateFrom').value = '';
+            document.getElementById('filterDateTo').value = '';
+            document.getElementById('filterCategory').value = '';
+            document.getElementById('filterColor').value = '';
+            document.getElementById('filterTags').value = '';
+            document.getElementById('filterOnlyFavorites').checked = false;
+            document.getElementById('filterOnlyPinned').checked = false;
+            document.getElementById('filterWithReminders').checked = false;
+
+            document.getElementById('advancedSearchModal').classList.remove('active');
+            loadNotes(); // Загрузить все заметки без фильтров
         }
 
         // 📊 ДАШБОРД И СТАТИСТИКА
@@ -3077,6 +3377,17 @@
 
             // Switch User
             document.getElementById('switchUserBtn').addEventListener('click', switchUser);
+
+            // Notifications
+            document.getElementById('notificationsBtn').addEventListener('click', requestNotificationPermission);
+
+            // Advanced Search
+            document.getElementById('advancedSearchBtn').addEventListener('click', openAdvancedSearch);
+            document.getElementById('closeAdvancedSearch').addEventListener('click', () => {
+                document.getElementById('advancedSearchModal').classList.remove('active');
+            });
+            document.getElementById('applyFiltersBtn').addEventListener('click', applyAdvancedFilters);
+            document.getElementById('clearFiltersBtn').addEventListener('click', clearAdvancedFilters);
 
             // Bulk operations
             document.getElementById('bulkSelectBtn').addEventListener('click', toggleBulkMode);
