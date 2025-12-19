@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>📕 3D Записная Книжка</title>
+    <title>📕 3D Записная Книжка + SQLite</title>
     <style>
         * {
             margin: 0;
@@ -342,6 +342,7 @@
             }
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
 <body>
     <div id="canvas-container"></div>
@@ -746,9 +747,23 @@
 
         // Управление заметками
         function loadNotes() {
-            const saved = localStorage.getItem('notebook3d_notes');
-            if (saved) {
-                notes = JSON.parse(saved);
+            try {
+                const result = db.exec('SELECT * FROM notes ORDER BY created_at DESC');
+                if (result.length > 0) {
+                    const columns = result[0].columns;
+                    const values = result[0].values;
+                    notes = values.map(row => {
+                        const note = {};
+                        columns.forEach((col, i) => {
+                            note[col] = row[i];
+                        });
+                        return note;
+                    });
+                } else {
+                    notes = [];
+                }
+            } catch (error) {
+                notes = [];
             }
             renderNotesList();
             updateStats();
@@ -756,7 +771,7 @@
         }
 
         function saveToStorage() {
-            localStorage.setItem('notebook3d_notes', JSON.stringify(notes));
+            // SQL save is done in saveNote/deleteNote functions
         }
 
         function showEditor(noteId = null) {
@@ -798,14 +813,19 @@
                 date: new Date().toLocaleString('ru-RU')
             };
 
-            if (currentNoteId) {
-                const index = notes.findIndex(n => n.id === currentNoteId);
-                notes[index] = note;
-            } else {
-                notes.unshift(note);
+            try {
+                const timestamp = Date.now();
+                if (currentNoteId) {
+                    db.run('UPDATE notes SET title = ?, content = ?, date = ? WHERE id = ?',
+                        [note.title, note.content, note.date, currentNoteId]);
+                } else {
+                    db.run('INSERT INTO notes (title, content, date, created_at) VALUES (?, ?, ?, ?)',
+                        [note.title, note.content, note.date, timestamp]);
+                }
+                saveDatabase();
+            } catch (error) {
+                console.error('Error:', error);
             }
-
-            saveToStorage();
             cancelEdit();
             renderNotesList();
             updateStats();
@@ -815,8 +835,12 @@
         function deleteCurrentNote() {
             if (!confirm('🗑️ Удалить эту заметку?')) return;
 
-            notes = notes.filter(n => n.id !== currentNoteId);
-            saveToStorage();
+            try {
+                db.run('DELETE FROM notes WHERE id = ?', [currentNoteId]);
+                saveDatabase();
+            } catch (error) {
+                console.error('Error:', error);
+            }
             cancelEdit();
             renderNotesList();
             updateStats();
@@ -888,7 +912,54 @@
 
         // Инициализация
         initThree();
-        loadNotes();
+
+        let db = null;
+        let SQL = null;
+
+        // Инициализация SQLite
+        async function initDatabase() {
+            try {
+                SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
+
+                const savedDb = localStorage.getItem('notebook3d_sqlite_db');
+
+                if (savedDb) {
+                    const uint8Array = new Uint8Array(JSON.parse(savedDb));
+                    db = new SQL.Database(uint8Array);
+                } else {
+                    db = new SQL.Database();
+                    db.run(`
+                        CREATE TABLE IF NOT EXISTS notes (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            title TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            date TEXT NOT NULL,
+                            created_at INTEGER NOT NULL
+                        )
+                    `);
+                    saveDatabase();
+                }
+
+                loadNotes();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function saveDatabase() {
+            try {
+                const data = db.export();
+                const buffer = Array.from(data);
+                localStorage.setItem('notebook3d_sqlite_db', JSON.stringify(buffer));
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+
+        initDatabase();
         animate();
     </script>
 </body>
