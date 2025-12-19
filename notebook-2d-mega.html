@@ -954,6 +954,9 @@
                 <div class="sidebar-item" id="exportAllBtn">
                     💾 Экспорт всех
                 </div>
+                <div class="sidebar-item" id="importBtn">
+                    📥 Импорт
+                </div>
                 <div class="sidebar-item" id="settingsBtn">
                     ⚙️ Настройки
                 </div>
@@ -1184,6 +1187,39 @@
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
                     <button type="button" class="btn btn-secondary" id="clearFiltersBtn">🗑️ Сбросить</button>
                     <button type="button" class="btn btn-primary" id="applyFiltersBtn">✅ Применить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="modal" id="importModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">📥 Импорт заметок</h2>
+                <button class="close-btn" id="closeImport">×</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 20px; padding: 20px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; cursor: pointer;" onclick="importFromTextFiles()">
+                    <div style="font-size: 48px; margin-bottom: 10px;">📄</div>
+                    <div style="font-size: 18px; font-weight: bold; margin-bottom: 5px;">Текстовые файлы</div>
+                    <div style="font-size: 14px; opacity: 0.9;">Импорт из .txt, .md, .markdown файлов</div>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; cursor: pointer;" onclick="importFromSQLite()">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🗄️</div>
+                    <div style="font-size: 18px; font-weight: bold; margin-bottom: 5px;">База данных SQLite</div>
+                    <div style="font-size: 14px; opacity: 0.9;">Импорт из существующей SQLite БД</div>
+                </div>
+
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                    <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ Информация:</div>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #666;">
+                        <li>Текстовые файлы: каждый файл = отдельная заметка</li>
+                        <li>SQLite БД: импорт всех заметок из таблицы notes</li>
+                        <li>Все импортированные заметки сохраняются в вашем профиле</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -2627,8 +2663,8 @@
             }
         });
 
-        // 📥 ИМПОРТ MARKDOWN
-        function importMarkdown() {
+        // 📥 ИМПОРТ ИЗ ТЕКСТОВЫХ ФАЙЛОВ
+        function importFromTextFiles() {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = '.md,.markdown,.txt';
@@ -2650,10 +2686,77 @@
 
                 saveDatabase();
                 loadNotes();
+                document.getElementById('importModal').classList.remove('active');
                 alert(`✅ Импортировано заметок: ${imported}`);
             };
 
             input.click();
+        }
+
+        // 📥 ИМПОРТ ИЗ SQLITE БД
+        function importFromSQLite() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.db,.sqlite,.sqlite3';
+
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const importedDB = new SQL.Database(new Uint8Array(arrayBuffer));
+
+                    // Проверяем наличие таблицы notes
+                    const tables = importedDB.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='notes'");
+                    if (tables.length === 0) {
+                        alert('❌ В этой БД не найдена таблица notes');
+                        return;
+                    }
+
+                    // Получаем все заметки из импортируемой БД
+                    const result = importedDB.exec('SELECT title, content, category, tags, color, is_favorite, is_pinned, created_at FROM notes WHERE is_deleted = 0 OR is_deleted IS NULL');
+
+                    if (result.length === 0 || result[0].values.length === 0) {
+                        alert('❌ В БД нет заметок для импорта');
+                        return;
+                    }
+
+                    let imported = 0;
+                    const now = Date.now();
+
+                    result[0].values.forEach(([title, content, category, tags, color, isFavorite, isPinned, createdAt]) => {
+                        db.run(`INSERT INTO notes (user_id, title, content, category, tags, color, is_favorite, is_pinned, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [currentUserId,
+                             title || 'Без названия',
+                             content || '',
+                             category || null,
+                             tags || null,
+                             color || 'white',
+                             isFavorite || 0,
+                             isPinned || 0,
+                             createdAt || now,
+                             now]);
+                        imported++;
+                    });
+
+                    saveDatabase();
+                    loadNotes();
+                    document.getElementById('importModal').classList.remove('active');
+                    alert(`✅ Импортировано заметок из SQLite БД: ${imported}`);
+                } catch (error) {
+                    console.error('Import error:', error);
+                    alert('❌ Ошибка при импорте БД: ' + error.message);
+                }
+            };
+
+            input.click();
+        }
+
+        // Открыть модальное окно импорта
+        function openImport() {
+            document.getElementById('importModal').classList.add('active');
         }
 
         // 🔗 WIKI-ССЫЛКИ [[название]]
@@ -3503,12 +3606,17 @@
                 document.getElementById('dashboardModal').classList.remove('active');
             });
 
-            // Settings - Import
+            // Settings
             document.getElementById('settingsBtn').addEventListener('click', () => {
-                const action = prompt('Выберите действие:\n1 - Импорт Markdown\n2 - Настройки темы\n3 - Горячие клавиши');
-                if (action === '1') importMarkdown();
-                else if (action === '2') alert('Редактор тем - в разработке');
-                else if (action === '3') showKeyboardShortcuts();
+                const action = prompt('Выберите действие:\n1 - Настройки темы\n2 - Горячие клавиши');
+                if (action === '1') alert('Редактор тем - в разработке');
+                else if (action === '2') showKeyboardShortcuts();
+            });
+
+            // Import
+            document.getElementById('importBtn').addEventListener('click', openImport);
+            document.getElementById('closeImport').addEventListener('click', () => {
+                document.getElementById('importModal').classList.remove('active');
             });
 
             // Switch User
