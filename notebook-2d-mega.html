@@ -911,6 +911,9 @@
                     <button class="btn btn-primary" id="newNoteBtn">
                         ➕ Новая заметка
                     </button>
+                    <button class="btn btn-success" id="fromTemplateBtn">
+                        📋 Из шаблона
+                    </button>
                 </div>
             </div>
 
@@ -1064,9 +1067,10 @@
                     <label class="form-label">✍️ Текст заметки (поддержка Markdown):</label>
                     <textarea class="form-textarea" id="noteContent" placeholder="Начните писать... (поддерживает Markdown)"></textarea>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, [ ] чеклисты</small>
+                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, - [ ] чеклисты</small>
                         <small id="wordCount" style="color: #667eea; font-weight: bold;">Слов: 0 | Символов: 0</small>
                     </div>
+                    <div id="editorChecklistProgress"></div>
                 </div>
 
                 <div class="form-group">
@@ -1080,6 +1084,7 @@
 
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                    <button type="button" class="btn btn-success" id="saveAsTemplateBtn">📑 Как шаблон</button>
                     <button type="button" class="btn btn-success" id="duplicateNoteBtn" style="display: none;">📋 Дублировать</button>
                     <button type="button" class="btn btn-secondary" id="printNoteBtn" style="display: none;">🖨️ Печать</button>
                     <button type="button" class="btn btn-danger" id="deleteNoteBtn" style="display: none;">🗑️ Удалить</button>
@@ -1214,12 +1219,158 @@
                 )
             `);
 
+            // Шаблоны заметок
+            db.run(`
+                CREATE TABLE IF NOT EXISTS templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    category TEXT,
+                    tags TEXT,
+                    color TEXT DEFAULT 'white',
+                    is_default INTEGER DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            `);
+
+            // Создать предустановленные шаблоны для первого пользователя
+            try {
+                const hasTemplates = db.exec('SELECT COUNT(*) FROM templates WHERE is_default = 1');
+                if (hasTemplates.length === 0 || hasTemplates[0].values[0][0] === 0) {
+                    createDefaultTemplates();
+                }
+            } catch (e) {}
+
             saveDatabase();
         }
 
         function createDemoUser() {
-            db.run('INSERT INTO users (username, created_at) VALUES (?, ?)', 
+            db.run('INSERT INTO users (username, created_at) VALUES (?, ?)',
                 ['Пользователь', Date.now()]);
+            saveDatabase();
+        }
+
+        function createDefaultTemplates() {
+            const now = Date.now();
+            const defaultTemplates = [
+                {
+                    name: '📝 Пустая заметка',
+                    title: 'Новая заметка',
+                    content: '',
+                    category: '',
+                    tags: '',
+                    color: 'white'
+                },
+                {
+                    name: '📅 Встреча',
+                    title: 'Встреча: ',
+                    content: `# Встреча
+
+**Дата:** ${new Date().toLocaleDateString('ru-RU')}
+**Участники:**
+
+## Повестка дня
+- [ ] Тема 1
+- [ ] Тема 2
+- [ ] Тема 3
+
+## Обсужденные вопросы
+
+
+## Решения
+
+
+## Следующие шаги
+- [ ]
+- [ ] `,
+                    category: 'Встречи',
+                    tags: 'встреча, планирование',
+                    color: 'lightblue'
+                },
+                {
+                    name: '💡 Идея',
+                    title: 'Идея: ',
+                    content: `# Идея
+
+## Описание
+Краткое описание идеи...
+
+## Проблема
+Какую проблему решает?
+
+## Решение
+Как это работает?
+
+## Преимущества
+-
+-
+
+## Следующие шаги
+- [ ] Исследовать
+- [ ] Прототип
+- [ ] Тестирование`,
+                    category: 'Идеи',
+                    tags: 'идея, мозговой штурм',
+                    color: 'lightyellow'
+                },
+                {
+                    name: '🍳 Рецепт',
+                    title: 'Рецепт: ',
+                    content: `# Рецепт
+
+**Время приготовления:**
+**Порций:**
+
+## Ингредиенты
+-
+-
+-
+
+## Приготовление
+1.
+2.
+3.
+
+## Примечания
+`,
+                    category: 'Рецепты',
+                    tags: 'рецепт, кулинария',
+                    color: 'lightcoral'
+                },
+                {
+                    name: '✅ Задача',
+                    title: 'Задача: ',
+                    content: `# Задача
+
+**Приоритет:** Средний
+**Срок:**
+**Статус:** В процессе
+
+## Описание
+
+
+## Подзадачи
+- [ ] Шаг 1
+- [ ] Шаг 2
+- [ ] Шаг 3
+
+## Заметки
+`,
+                    category: 'Задачи',
+                    tags: 'задача, todo',
+                    color: 'lightgreen'
+                }
+            ];
+
+            defaultTemplates.forEach(template => {
+                db.run(`INSERT INTO templates (user_id, name, title, content, category, tags, color, is_default, created_at)
+                        VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?)`,
+                    [template.name, template.title, template.content, template.category, template.tags, template.color, now]);
+            });
+
             saveDatabase();
         }
 
@@ -2040,6 +2191,148 @@
             URL.revokeObjectURL(url);
         }
 
+        // ЧЕК-ЛИСТЫ TODO
+        function processCheckboxes(noteId) {
+            const checkboxes = document.querySelectorAll(`[data-note-id="${noteId}"] input[type="checkbox"]`);
+
+            checkboxes.forEach((checkbox, index) => {
+                checkbox.addEventListener('change', function() {
+                    // Получить текущее содержимое заметки
+                    const result = db.exec('SELECT content FROM notes WHERE id = ?', [noteId]);
+                    if (result.length === 0) return;
+
+                    let content = result[0].values[0][0];
+                    const lines = content.split('\n');
+                    let checkboxCount = 0;
+
+                    // Найти и обновить нужный чекбокс
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].includes('- [ ]') || lines[i].includes('- [x]') ||
+                            lines[i].includes('- [X]')) {
+                            if (checkboxCount === index) {
+                                if (this.checked) {
+                                    lines[i] = lines[i].replace('- [ ]', '- [x]');
+                                } else {
+                                    lines[i] = lines[i].replace(/- \[[xX]\]/, '- [ ]');
+                                }
+                                break;
+                            }
+                            checkboxCount++;
+                        }
+                    }
+
+                    // Сохранить обновленное содержимое
+                    const newContent = lines.join('\n');
+                    db.run('UPDATE notes SET content = ?, updated_at = ? WHERE id = ?',
+                        [newContent, Date.now(), noteId]);
+                    saveDatabase();
+
+                    // Обновить прогресс
+                    updateChecklistProgress(noteId);
+                });
+            });
+
+            // Показать прогресс при загрузке
+            updateChecklistProgress(noteId);
+        }
+
+        function updateChecklistProgress(noteId) {
+            const result = db.exec('SELECT content FROM notes WHERE id = ?', [noteId]);
+            if (result.length === 0) return;
+
+            const content = result[0].values[0][0];
+            const total = (content.match(/- \[ \]/g) || []).length +
+                         (content.match(/- \[[xX]\]/g) || []).length;
+            const checked = (content.match(/- \[[xX]\]/g) || []).length;
+
+            if (total > 0) {
+                const progressBar = document.querySelector(`[data-note-id="${noteId}"] .checklist-progress`);
+                if (progressBar) {
+                    const percent = Math.round((checked / total) * 100);
+                    progressBar.innerHTML = `
+                        <div style="background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                            <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+                                        height: 20px; width: ${percent}%; transition: width 0.3s;
+                                        display: flex; align-items: center; justify-content: center;
+                                        color: white; font-size: 11px; font-weight: bold;">
+                                ${checked}/${total} (${percent}%)
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // ШАБЛОНЫ ЗАМЕТОК
+        function createNoteFromTemplate() {
+            const result = db.exec('SELECT * FROM templates WHERE user_id = ? ORDER BY is_default DESC, name ASC', [currentUserId]);
+
+            if (result.length === 0 || result[0].values.length === 0) {
+                alert('❌ У вас нет доступных шаблонов!');
+                return;
+            }
+
+            const templates = result[0].values;
+            let templateList = 'Выберите шаблон:\n\n';
+            templates.forEach(([id, userId, name], index) => {
+                templateList += `${index + 1}. ${name}\n`;
+            });
+            templateList += '\n0 - Отмена';
+
+            const choice = prompt(templateList);
+            if (!choice || choice === '0') return;
+
+            const index = parseInt(choice) - 1;
+            if (index >= 0 && index < templates.length) {
+                const template = templates[index];
+                // template: [id, user_id, name, title, content, category, tags, color, is_default, created_at]
+
+                currentNoteId = null;
+                document.getElementById('noteTitle').value = template[3]; // title
+                document.getElementById('noteContent').value = template[4]; // content
+                document.getElementById('noteCategory').value = template[5] || ''; // category
+                document.getElementById('noteTags').value = template[6] || ''; // tags
+                document.getElementById('noteFolder').value = '';
+                document.getElementById('noteFavorite').checked = false;
+                document.getElementById('notePinned').checked = false;
+                document.getElementById('notePassword').value = '';
+                document.getElementById('noteReminder').value = '';
+
+                document.getElementById('deleteNoteBtn').style.display = 'none';
+                document.getElementById('duplicateNoteBtn').style.display = 'none';
+                document.getElementById('printNoteBtn').style.display = 'none';
+
+                selectColor(template[7]); // color
+                document.getElementById('editorModal').classList.add('active');
+                updateWordCount();
+            }
+        }
+
+        function saveAsTemplate() {
+            const name = prompt('Введите название шаблона:');
+            if (!name || !name.trim()) return;
+
+            const title = document.getElementById('noteTitle').value;
+            const content = document.getElementById('noteContent').value;
+            const category = document.getElementById('noteCategory').value;
+            const tags = document.getElementById('noteTags').value;
+
+            if (!content.trim()) {
+                alert('❌ Шаблон не может быть пустым!');
+                return;
+            }
+
+            try {
+                db.run(`INSERT INTO templates (user_id, name, title, content, category, tags, color, is_default, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+                    [currentUserId, name.trim(), title, content, category, tags, currentColor, Date.now()]);
+                saveDatabase();
+                alert(`✅ Шаблон "${name}" успешно сохранен!`);
+            } catch (e) {
+                alert('❌ Ошибка при сохранении шаблона: ' + e.message);
+            }
+        }
+
         // Дублировать заметку
         function duplicateNote() {
             if (!currentNoteId) return;
@@ -2121,6 +2414,27 @@
 
             document.getElementById('wordCount').textContent =
                 `Слов: ${words} | Символов: ${chars} | 📖 ${readTime} мин`;
+
+            // Обновить прогресс чек-листа
+            const total = (content.match(/- \[ \]/g) || []).length +
+                         (content.match(/- \[[xX]\]/g) || []).length;
+            const checked = (content.match(/- \[[xX]\]/g) || []).length;
+
+            const progressDiv = document.getElementById('editorChecklistProgress');
+            if (total > 0) {
+                const percent = Math.round((checked / total) * 100);
+                progressDiv.innerHTML = `
+                    <div style="margin-top: 10px;">
+                        <small style="color: #666;">✅ Чек-лист: ${checked}/${total} (${percent}%)</small>
+                        <div style="background: #f0f0f0; border-radius: 10px; overflow: hidden; margin-top: 5px;">
+                            <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+                                        height: 8px; width: ${percent}%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                progressDiv.innerHTML = '';
+            }
         }
 
         // Корзина - восстановление заметок
@@ -2160,6 +2474,10 @@
             document.getElementById('deleteNoteBtn').addEventListener('click', deleteNote);
             document.getElementById('duplicateNoteBtn').addEventListener('click', duplicateNote);
             document.getElementById('printNoteBtn').addEventListener('click', printNote);
+
+            // Шаблоны
+            document.getElementById('fromTemplateBtn').addEventListener('click', createNoteFromTemplate);
+            document.getElementById('saveAsTemplateBtn').addEventListener('click', saveAsTemplate);
 
             // Счетчик слов/символов
             document.getElementById('noteContent').addEventListener('input', updateWordCount);
