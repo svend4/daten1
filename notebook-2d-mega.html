@@ -2095,6 +2095,55 @@
                 else if (action === '2') alert('Редактор тем - в разработке');
                 else if (action === '3') showKeyboardShortcuts();
             });
+
+            // Switch User
+            document.getElementById('switchUserBtn').addEventListener('click', switchUser);
+        }
+
+        // Функция смены пользователя
+        function switchUser() {
+            const result = db.exec('SELECT id, username FROM users ORDER BY id');
+            if (result.length === 0) return;
+
+            const users = result[0].values;
+            let userList = 'Выберите пользователя:\n\n';
+            users.forEach(([id, username], index) => {
+                userList += `${index + 1}. ${username}${id === currentUserId ? ' (текущий)' : ''}\n`;
+            });
+            userList += '\n0 - Создать нового пользователя';
+
+            const choice = prompt(userList);
+            if (!choice) return;
+
+            if (choice === '0') {
+                const newUsername = prompt('Введите имя нового пользователя:');
+                if (!newUsername || !newUsername.trim()) return;
+
+                try {
+                    db.run('INSERT INTO users (username, created_at) VALUES (?, ?)',
+                        [newUsername.trim(), Date.now()]);
+                    saveDatabase();
+
+                    // Получить ID нового пользователя
+                    const newUser = db.exec('SELECT id FROM users WHERE username = ?', [newUsername.trim()]);
+                    currentUserId = newUser[0].values[0][0];
+
+                    alert(`✅ Пользователь "${newUsername}" создан и выбран!`);
+                    location.reload();
+                } catch (e) {
+                    alert('❌ Ошибка: Пользователь с таким именем уже существует!');
+                }
+            } else {
+                const index = parseInt(choice) - 1;
+                if (index >= 0 && index < users.length) {
+                    currentUserId = users[index][0];
+                    document.getElementById('sidebarUserName').textContent = users[index][1];
+                    loadFolders();
+                    loadNotes();
+                    updateSidebarCounts();
+                    alert(`✅ Переключено на пользователя: ${users[index][1]}`);
+                }
+            }
         }
 
         function showKeyboardShortcuts() {
