@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📔 Моя Записная Книжка + SQLite</title>
+    <title>📔 Многопользовательский Блокнот + SQLite</title>
     <style>
         * {
             margin: 0;
@@ -21,6 +21,104 @@
             padding: 20px;
         }
 
+        .login-screen {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        .login-screen.active {
+            display: block;
+        }
+
+        .login-title {
+            text-align: center;
+            font-size: 32px;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .user-list {
+            margin-bottom: 30px;
+        }
+
+        .user-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .user-stats {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .user-delete {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(235, 51, 73, 0.1);
+            color: #eb3349;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .user-delete:hover {
+            background: #eb3349;
+            color: white;
+        }
+
+        .new-user-form {
+            background: #f5f7fa;
+            padding: 20px;
+            border-radius: 15px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
         .notebook-container {
             width: 100%;
             max-width: 900px;
@@ -29,6 +127,11 @@
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             padding: 30px;
             position: relative;
+            display: none;
+        }
+
+        .notebook-container.active {
+            display: block;
         }
 
         .notebook-cover {
@@ -36,6 +139,38 @@
             border-radius: 10px;
             padding: 20px;
             box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .user-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+
+        .current-user {
+            color: #f4e4c1;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .switch-user-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .switch-user-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
         .notebook-title {
@@ -371,10 +506,33 @@
 <body>
     <div class="loading" id="loading">⏳ Загрузка SQLite...</div>
 
-    <div class="notebook-container">
+    <!-- Login Screen -->
+    <div class="login-screen active" id="loginScreen">
+        <h1 class="login-title">👥 Выберите Профиль</h1>
+        
+        <div class="user-list" id="userList">
+            <!-- Users will be rendered here -->
+        </div>
+
+        <div class="new-user-form">
+            <h3 style="margin-bottom: 15px;">➕ Создать новый профиль</h3>
+            <input type="text" id="newUsername" class="form-input" placeholder="Введите имя пользователя..." maxlength="20">
+            <button class="btn btn-primary" onclick="createUser()">Создать Профиль</button>
+        </div>
+    </div>
+
+    <!-- Notebook Screen -->
+    <div class="notebook-container" id="notebookContainer">
         <div class="notebook-cover">
+            <div class="user-header">
+                <div class="current-user">
+                    👤 <span id="currentUserName">Пользователь</span>
+                </div>
+                <button class="switch-user-btn" onclick="switchToLogin()">Сменить Профиль</button>
+            </div>
+
             <h1 class="notebook-title">📔 МОЯ ЗАПИСНАЯ КНИЖКА</h1>
-            <div class="db-badge">🗄️ База данных: SQLite</div>
+            <div class="db-badge">🗄️ Многопользовательская БД: SQLite</div>
 
             <div class="notebook-pages">
                 <div class="controls">
@@ -455,10 +613,12 @@
         let db = null;
         let SQL = null;
         let notes = [];
+        let users = [];
+        let currentUserId = null;
         let currentNoteId = null;
         let currentColor = 'white';
 
-        // Инициализация SQLite
+        // Инициализация SQLite с многопользовательской схемой
         async function initDatabase() {
             document.getElementById('loading').classList.add('active');
 
@@ -467,7 +627,7 @@
                     locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
                 });
 
-                const savedDb = localStorage.getItem('notebook2d_sqlite_db');
+                const savedDb = localStorage.getItem('notebook2d_multiuser_db');
 
                 if (savedDb) {
                     const uint8Array = new Uint8Array(JSON.parse(savedDb));
@@ -475,23 +635,37 @@
                     console.log('✅ База данных восстановлена');
                 } else {
                     db = new SQL.Database();
+                    
+                    // Создаем таблицу пользователей
+                    db.run(`
+                        CREATE TABLE IF NOT EXISTS users (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT UNIQUE NOT NULL,
+                            created_at INTEGER NOT NULL
+                        )
+                    `);
+
+                    // Создаем таблицу заметок с user_id
                     db.run(`
                         CREATE TABLE IF NOT EXISTS notes (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL,
                             title TEXT NOT NULL,
                             category TEXT,
                             content TEXT NOT NULL,
                             color TEXT DEFAULT 'white',
                             date TEXT NOT NULL,
-                            created_at INTEGER NOT NULL
+                            created_at INTEGER NOT NULL,
+                            FOREIGN KEY (user_id) REFERENCES users(id)
                         )
                     `);
+
                     console.log('✅ Создана новая база данных');
                     saveDatabase();
                 }
 
                 document.getElementById('loading').classList.remove('active');
-                loadNotes();
+                loadUsers();
             } catch (error) {
                 console.error('❌ Ошибка:', error);
                 document.getElementById('loading').classList.remove('active');
@@ -503,15 +677,146 @@
             try {
                 const data = db.export();
                 const buffer = Array.from(data);
-                localStorage.setItem('notebook2d_sqlite_db', JSON.stringify(buffer));
+                localStorage.setItem('notebook2d_multiuser_db', JSON.stringify(buffer));
             } catch (error) {
                 console.error('❌ Ошибка сохранения:', error);
             }
         }
 
-        function loadNotes() {
+        // Работа с пользователями
+        function loadUsers() {
             try {
-                const result = db.exec('SELECT * FROM notes ORDER BY created_at DESC');
+                const result = db.exec('SELECT * FROM users ORDER BY created_at DESC');
+
+                if (result.length > 0) {
+                    const columns = result[0].columns;
+                    const values = result[0].values;
+
+                    users = values.map(row => {
+                        const user = {};
+                        columns.forEach((col, i) => {
+                            user[col] = row[i];
+                        });
+                        return user;
+                    });
+                } else {
+                    users = [];
+                }
+
+                renderUserList();
+            } catch (error) {
+                console.error('❌ Ошибка загрузки пользователей:', error);
+                users = [];
+                renderUserList();
+            }
+        }
+
+        function renderUserList() {
+            const container = document.getElementById('userList');
+
+            if (users.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👤</div>
+                        <div class="empty-state-text">
+                            Нет профилей.<br>
+                            Создайте первый профиль!
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = users.map(user => {
+                const noteCount = getUserNoteCount(user.id);
+                return `
+                    <div class="user-card" onclick="selectUser(${user.id})">
+                        <div class="user-info">
+                            <div class="user-name">👤 ${user.username}</div>
+                            <div class="user-stats">📝 ${noteCount} заметок</div>
+                        </div>
+                        <button class="user-delete" onclick="event.stopPropagation(); deleteUser(${user.id})">🗑️</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getUserNoteCount(userId) {
+            try {
+                const result = db.exec('SELECT COUNT(*) as count FROM notes WHERE user_id = ?', [userId]);
+                if (result.length > 0) {
+                    return result[0].values[0][0];
+                }
+            } catch (error) {
+                console.error('❌ Ошибка:', error);
+            }
+            return 0;
+        }
+
+        function createUser() {
+            const username = document.getElementById('newUsername').value.trim();
+
+            if (!username) {
+                alert('⚠️ Введите имя пользователя!');
+                return;
+            }
+
+            try {
+                const timestamp = Date.now();
+                db.run('INSERT INTO users (username, created_at) VALUES (?, ?)', [username, timestamp]);
+                saveDatabase();
+                document.getElementById('newUsername').value = '';
+                loadUsers();
+                alert('✅ Профиль создан!');
+            } catch (error) {
+                console.error('❌ Ошибка:', error);
+                if (error.message.includes('UNIQUE')) {
+                    alert('⚠️ Пользователь с таким именем уже существует!');
+                } else {
+                    alert('Ошибка создания профиля!');
+                }
+            }
+        }
+
+        function deleteUser(userId) {
+            const user = users.find(u => u.id === userId);
+            if (!confirm(`🗑️ Удалить профиль "${user.username}" и все его заметки?`)) return;
+
+            try {
+                db.run('DELETE FROM notes WHERE user_id = ?', [userId]);
+                db.run('DELETE FROM users WHERE id = ?', [userId]);
+                saveDatabase();
+                loadUsers();
+            } catch (error) {
+                console.error('❌ Ошибка:', error);
+                alert('Ошибка удаления профиля!');
+            }
+        }
+
+        function selectUser(userId) {
+            currentUserId = userId;
+            const user = users.find(u => u.id === userId);
+            
+            document.getElementById('currentUserName').textContent = user.username;
+            document.getElementById('loginScreen').classList.remove('active');
+            document.getElementById('notebookContainer').classList.add('active');
+            
+            loadNotes();
+        }
+
+        function switchToLogin() {
+            document.getElementById('loginScreen').classList.add('active');
+            document.getElementById('notebookContainer').classList.remove('active');
+            currentUserId = null;
+            notes = [];
+        }
+
+        // Работа с заметками (фильтрация по user_id)
+        function loadNotes() {
+            if (!currentUserId) return;
+
+            try {
+                const result = db.exec('SELECT * FROM notes WHERE user_id = ? ORDER BY created_at DESC', [currentUserId]);
 
                 if (result.length > 0) {
                     const columns = result[0].columns;
@@ -554,13 +859,13 @@
 
                 if (currentNoteId) {
                     db.run(
-                        'UPDATE notes SET title = ?, category = ?, content = ?, color = ?, date = ? WHERE id = ?',
-                        [title || 'Без названия', category || '', content, currentColor, date, currentNoteId]
+                        'UPDATE notes SET title = ?, category = ?, content = ?, color = ?, date = ? WHERE id = ? AND user_id = ?',
+                        [title || 'Без названия', category || '', content, currentColor, date, currentNoteId, currentUserId]
                     );
                 } else {
                     db.run(
-                        'INSERT INTO notes (title, category, content, color, date, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-                        [title || 'Без названия', category || '', content, currentColor, date, timestamp]
+                        'INSERT INTO notes (user_id, title, category, content, color, date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        [currentUserId, title || 'Без названия', category || '', content, currentColor, date, timestamp]
                     );
                 }
 
@@ -577,7 +882,7 @@
             if (!confirm('🗑️ Удалить эту заметку?')) return;
 
             try {
-                db.run('DELETE FROM notes WHERE id = ?', [id]);
+                db.run('DELETE FROM notes WHERE id = ? AND user_id = ?', [id, currentUserId]);
                 saveDatabase();
                 loadNotes();
             } catch (error) {
@@ -693,7 +998,8 @@
                 return;
             }
 
-            let text = '📔 МОЯ ЗАПИСНАЯ КНИЖКА + SQLite\n';
+            const user = users.find(u => u.id === currentUserId);
+            let text = `📔 БЛОКНОТ: ${user.username}\n`;
             text += '═══════════════════════════════\n\n';
 
             notes.forEach((note, index) => {
@@ -710,7 +1016,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Записная_книжка_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')}.txt`;
+            a.download = `${user.username}_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -726,7 +1032,7 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `notebook2d_${new Date().toISOString().slice(0,10)}.db`;
+                a.download = `multiuser_notebook_${new Date().toISOString().slice(0,10)}.db`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -746,7 +1052,13 @@
                     const uint8Array = new Uint8Array(e.target.result);
                     db = new SQL.Database(uint8Array);
                     saveDatabase();
-                    loadNotes();
+                    
+                    if (currentUserId) {
+                        loadNotes();
+                    } else {
+                        loadUsers();
+                    }
+                    
                     alert('✅ База данных импортирована!');
                 } catch (error) {
                     console.error('❌ Ошибка:', error);
