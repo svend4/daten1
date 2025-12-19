@@ -911,6 +911,24 @@
                     <button class="btn btn-primary" id="newNoteBtn">
                         ➕ Новая заметка
                     </button>
+                    <button class="btn btn-success" id="fromTemplateBtn">
+                        📋 Из шаблона
+                    </button>
+                    <button class="btn btn-secondary" id="bulkSelectBtn">
+                        ☑️ Выбрать
+                    </button>
+                </div>
+            </div>
+
+            <!-- Панель массовых операций -->
+            <div id="bulkActionsPanel" style="display: none; background: #667eea; color: white; padding: 15px; border-bottom: 1px solid #ddd;">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <span id="selectedCount">Выбрано: 0</span>
+                    <button class="btn btn-danger" id="bulkDeleteBtn">🗑️ Удалить</button>
+                    <button class="btn btn-secondary" id="bulkMoveBtn">📁 Переместить</button>
+                    <button class="btn btn-secondary" id="bulkTagBtn">🏷️ Добавить тег</button>
+                    <button class="btn btn-secondary" id="bulkFavoriteBtn">⭐ В избранное</button>
+                    <button class="btn btn-secondary" id="bulkCancelBtn">❌ Отменить</button>
                 </div>
             </div>
 
@@ -1063,7 +1081,11 @@
                 <div class="form-group">
                     <label class="form-label">✍️ Текст заметки (поддержка Markdown):</label>
                     <textarea class="form-textarea" id="noteContent" placeholder="Начните писать... (поддерживает Markdown)"></textarea>
-                    <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, [ ] чеклисты</small>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, - [ ] чеклисты</small>
+                        <small id="wordCount" style="color: #667eea; font-weight: bold;">Слов: 0 | Символов: 0</small>
+                    </div>
+                    <div id="editorChecklistProgress"></div>
                 </div>
 
                 <div class="form-group">
@@ -1075,8 +1097,11 @@
                     </label>
                 </div>
 
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                    <button type="button" class="btn btn-success" id="saveAsTemplateBtn">📑 Как шаблон</button>
+                    <button type="button" class="btn btn-success" id="duplicateNoteBtn" style="display: none;">📋 Дублировать</button>
+                    <button type="button" class="btn btn-secondary" id="printNoteBtn" style="display: none;">🖨️ Печать</button>
                     <button type="button" class="btn btn-danger" id="deleteNoteBtn" style="display: none;">🗑️ Удалить</button>
                     <button type="button" class="btn btn-secondary" id="cancelEditBtn">❌ Отмена</button>
                 </div>
@@ -1110,6 +1135,8 @@
         let currentFolderId = null;
         let currentSort = 'created_desc';
         let currentColor = 'white';
+        let bulkSelectMode = false;
+        let selectedNotes = new Set();
 
         // Инициализация
         async function initApp() {
@@ -1182,12 +1209,20 @@
                     is_deleted INTEGER DEFAULT 0,
                     password TEXT,
                     reminder_date INTEGER,
+                    view_count INTEGER DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
                     FOREIGN KEY (user_id) REFERENCES users(id),
                     FOREIGN KEY (folder_id) REFERENCES folders(id)
                 )
             `);
+
+            // Миграция: добавить view_count для существующих БД
+            try {
+                db.run(`ALTER TABLE notes ADD COLUMN view_count INTEGER DEFAULT 0`);
+            } catch (e) {
+                // Колонка уже существует
+            }
 
             // История версий
             db.run(`
@@ -1201,12 +1236,158 @@
                 )
             `);
 
+            // Шаблоны заметок
+            db.run(`
+                CREATE TABLE IF NOT EXISTS templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    category TEXT,
+                    tags TEXT,
+                    color TEXT DEFAULT 'white',
+                    is_default INTEGER DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            `);
+
+            // Создать предустановленные шаблоны для первого пользователя
+            try {
+                const hasTemplates = db.exec('SELECT COUNT(*) FROM templates WHERE is_default = 1');
+                if (hasTemplates.length === 0 || hasTemplates[0].values[0][0] === 0) {
+                    createDefaultTemplates();
+                }
+            } catch (e) {}
+
             saveDatabase();
         }
 
         function createDemoUser() {
-            db.run('INSERT INTO users (username, created_at) VALUES (?, ?)', 
+            db.run('INSERT INTO users (username, created_at) VALUES (?, ?)',
                 ['Пользователь', Date.now()]);
+            saveDatabase();
+        }
+
+        function createDefaultTemplates() {
+            const now = Date.now();
+            const defaultTemplates = [
+                {
+                    name: '📝 Пустая заметка',
+                    title: 'Новая заметка',
+                    content: '',
+                    category: '',
+                    tags: '',
+                    color: 'white'
+                },
+                {
+                    name: '📅 Встреча',
+                    title: 'Встреча: ',
+                    content: `# Встреча
+
+**Дата:** ${new Date().toLocaleDateString('ru-RU')}
+**Участники:**
+
+## Повестка дня
+- [ ] Тема 1
+- [ ] Тема 2
+- [ ] Тема 3
+
+## Обсужденные вопросы
+
+
+## Решения
+
+
+## Следующие шаги
+- [ ]
+- [ ] `,
+                    category: 'Встречи',
+                    tags: 'встреча, планирование',
+                    color: 'lightblue'
+                },
+                {
+                    name: '💡 Идея',
+                    title: 'Идея: ',
+                    content: `# Идея
+
+## Описание
+Краткое описание идеи...
+
+## Проблема
+Какую проблему решает?
+
+## Решение
+Как это работает?
+
+## Преимущества
+-
+-
+
+## Следующие шаги
+- [ ] Исследовать
+- [ ] Прототип
+- [ ] Тестирование`,
+                    category: 'Идеи',
+                    tags: 'идея, мозговой штурм',
+                    color: 'lightyellow'
+                },
+                {
+                    name: '🍳 Рецепт',
+                    title: 'Рецепт: ',
+                    content: `# Рецепт
+
+**Время приготовления:**
+**Порций:**
+
+## Ингредиенты
+-
+-
+-
+
+## Приготовление
+1.
+2.
+3.
+
+## Примечания
+`,
+                    category: 'Рецепты',
+                    tags: 'рецепт, кулинария',
+                    color: 'lightcoral'
+                },
+                {
+                    name: '✅ Задача',
+                    title: 'Задача: ',
+                    content: `# Задача
+
+**Приоритет:** Средний
+**Срок:**
+**Статус:** В процессе
+
+## Описание
+
+
+## Подзадачи
+- [ ] Шаг 1
+- [ ] Шаг 2
+- [ ] Шаг 3
+
+## Заметки
+`,
+                    category: 'Задачи',
+                    tags: 'задача, todo',
+                    color: 'lightgreen'
+                }
+            ];
+
+            defaultTemplates.forEach(template => {
+                db.run(`INSERT INTO templates (user_id, name, title, content, category, tags, color, is_default, created_at)
+                        VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?)`,
+                    [template.name, template.title, template.content, template.category, template.tags, template.color, now]);
+            });
+
             saveDatabase();
         }
 
@@ -1319,8 +1500,9 @@
                 is_deleted: row[11],
                 password: row[12],
                 reminder_date: row[13],
-                created_at: row[14],
-                updated_at: row[15]
+                view_count: row[14] || 0,
+                created_at: row[15],
+                updated_at: row[16]
             })) : [];
 
             renderNotes(notes);
@@ -1350,12 +1532,17 @@
                 if (note.password) {
                     contentPreview = '🔒 Защищено паролем';
                 } else {
-                    // Применяем wiki-ссылки, затем markdown, затем удаляем HTML
-                    const withWikiLinks = processWikiLinks(note.content);
+                    // Применяем TOC, wiki-ссылки, затем markdown, затем удаляем HTML
+                    const withTOC = generateTOC(note.content);
+                    const withWikiLinks = processWikiLinks(withTOC);
                     contentPreview = marked.parse(withWikiLinks).replace(/<[^>]*>/g, '').substring(0, 150);
                 }
 
                 const hasReminder = note.reminder_date && note.reminder_date > Date.now();
+
+                // Время чтения
+                const words = note.content.trim().split(/\s+/).filter(w => w.length > 0).length;
+                const readTime = Math.ceil(words / 200); // ~200 слов в минуту
 
                 return `
                     <div class="note-card ${note.is_pinned ? 'pinned' : ''}"
@@ -1365,26 +1552,34 @@
                         <div class="note-header">
                             <h3 class="note-title">${note.password ? '🔒 ' : ''}${note.title}</h3>
                             <div class="note-actions">
-                                ${note.is_favorite ? '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">⭐</button>' :
-                                  '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">☆</button>'}
-                                <button class="note-action-btn" onclick="editNote(' + note.id + ', event)">✏️</button>
+                                ${note.is_deleted ?
+                                    // Кнопки для корзины
+                                    '<button class="note-action-btn" onclick="restoreFromTrash(' + note.id + '); event.stopPropagation();" title="Восстановить">♻️</button>' +
+                                    '<button class="note-action-btn" onclick="permanentDelete(' + note.id + '); event.stopPropagation();" title="Удалить навсегда" style="color: #f45c43;">🗑️</button>' :
+                                    // Обычные кнопки
+                                    (note.is_favorite ? '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">⭐</button>' :
+                                      '<button class="note-action-btn" onclick="toggleFavorite(' + note.id + ', event)">☆</button>') +
+                                    '<button class="note-action-btn" onclick="editNote(' + note.id + ', event)">✏️</button>'
+                                }
                             </div>
                         </div>
 
                         <div class="note-badges">
+                            ${note.is_deleted ? '<span class="badge" style="background: #f45c43;">🗑️ В корзине</span>' : ''}
                             ${note.category ? `<span class="badge">🏷️ ${note.category}</span>` : ''}
                             ${tags.map(tag => `<span class="badge">#${tag}</span>`).join('')}
-                            ${note.is_pinned ? '<span class="badge">📌 Закреплено</span>' : ''}
-                            ${note.is_archived ? '<span class="badge">🗄️ Архив</span>' : ''}
-                            ${hasReminder ? '<span class="badge">📅 Напоминание</span>' : ''}
-                            ${note.password ? '<span class="badge">🔒 Защищено</span>' : ''}
+                            ${!note.is_deleted && note.is_pinned ? '<span class="badge">📌 Закреплено</span>' : ''}
+                            ${!note.is_deleted && note.is_archived ? '<span class="badge">🗄️ Архив</span>' : ''}
+                            ${!note.is_deleted && hasReminder ? '<span class="badge">📅 Напоминание</span>' : ''}
+                            ${!note.is_deleted && note.password ? '<span class="badge">🔒 Защищено</span>' : ''}
                         </div>
 
                         <div class="note-content">${contentPreview}${!note.password ? '...' : ''}</div>
 
                         <div class="note-footer">
                             <span>${new Date(note.created_at).toLocaleDateString('ru-RU')}</span>
-                            ${hasReminder ? '<span>📅 ' + new Date(note.reminder_date).toLocaleDateString('ru-RU') + '</span>' : ''}
+                            ${readTime > 0 ? '<span>📖 ' + readTime + ' мин</span>' : ''}
+                            ${note.view_count > 0 ? '<span>👁️ ' + note.view_count + '</span>' : ''}
                         </div>
                     </div>
                 `;
@@ -1392,9 +1587,15 @@
 
             // Add click handlers
             document.querySelectorAll('.note-card').forEach(card => {
+                const noteId = parseInt(card.dataset.id);
+                const note = notes.find(n => n.id === noteId);
+
                 card.addEventListener('click', (e) => {
                     if (!e.target.closest('.note-actions')) {
-                        editNote(parseInt(card.dataset.id));
+                        // Не открываем редактор для удаленных заметок
+                        if (note && !note.is_deleted) {
+                            editNote(noteId);
+                        }
                     }
                 });
             });
@@ -1514,9 +1715,18 @@
             }
 
             document.getElementById('deleteNoteBtn').style.display = 'block';
+            document.getElementById('duplicateNoteBtn').style.display = 'block';
+            document.getElementById('printNoteBtn').style.display = 'block';
 
             selectColor(note[7]);
             document.getElementById('editorModal').classList.add('active');
+
+            // Обновить счетчик слов
+            updateWordCount();
+
+            // Увеличить счетчик просмотров
+            db.run('UPDATE notes SET view_count = view_count + 1 WHERE id = ?', [id]);
+            saveDatabase();
         }
 
         function deleteNote() {
@@ -1790,6 +2000,49 @@
             });
         }
 
+        // 📑 ОГЛАВЛЕНИЕ (TOC)
+        function generateTOC(content) {
+            // Проверить наличие маркера [TOC]
+            if (!content.match(/\[TOC\]/i)) return content;
+
+            // Найти все заголовки
+            const headings = [];
+            const lines = content.split('\n');
+
+            lines.forEach((line, index) => {
+                const match = line.match(/^(#{1,6})\s+(.+)$/);
+                if (match) {
+                    const level = match[1].length;
+                    const text = match[2].trim();
+                    const id = 'heading-' + text.toLowerCase().replace(/[^a-zа-я0-9]/g, '-');
+                    headings.push({ level, text, id, line: index });
+                }
+            });
+
+            if (headings.length === 0) {
+                return content.replace(/\[TOC\]/gi, '<p><em>📑 Нет заголовков для оглавления</em></p>');
+            }
+
+            // Создать HTML оглавления
+            let tocHtml = '<div class="toc-container" style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 5px;">';
+            tocHtml += '<h3 style="margin: 0 0 10px 0; color: #667eea;">📑 Оглавление</h3>';
+            tocHtml += '<ul style="margin: 0; padding-left: 20px; list-style: none;">';
+
+            headings.forEach(h => {
+                const indent = (h.level - 1) * 15;
+                tocHtml += `<li style="margin-left: ${indent}px; margin-bottom: 5px;">
+                    <a href="#${h.id}" style="color: #495057; text-decoration: none; hover: {text-decoration: underline;}">
+                        ${'•'.repeat(h.level)} ${h.text}
+                    </a>
+                </li>`;
+            });
+
+            tocHtml += '</ul></div>';
+
+            // Заменить [TOC] на оглавление
+            return content.replace(/\[TOC\]/gi, tocHtml);
+        }
+
         function openNoteByTitle(title) {
             const result = db.exec('SELECT id FROM notes WHERE user_id = ? AND title LIKE ? AND is_deleted = 0 LIMIT 1',
                 [currentUserId, '%' + title + '%']);
@@ -1999,6 +2252,252 @@
             URL.revokeObjectURL(url);
         }
 
+        // ЧЕК-ЛИСТЫ TODO
+        function processCheckboxes(noteId) {
+            const checkboxes = document.querySelectorAll(`[data-note-id="${noteId}"] input[type="checkbox"]`);
+
+            checkboxes.forEach((checkbox, index) => {
+                checkbox.addEventListener('change', function() {
+                    // Получить текущее содержимое заметки
+                    const result = db.exec('SELECT content FROM notes WHERE id = ?', [noteId]);
+                    if (result.length === 0) return;
+
+                    let content = result[0].values[0][0];
+                    const lines = content.split('\n');
+                    let checkboxCount = 0;
+
+                    // Найти и обновить нужный чекбокс
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].includes('- [ ]') || lines[i].includes('- [x]') ||
+                            lines[i].includes('- [X]')) {
+                            if (checkboxCount === index) {
+                                if (this.checked) {
+                                    lines[i] = lines[i].replace('- [ ]', '- [x]');
+                                } else {
+                                    lines[i] = lines[i].replace(/- \[[xX]\]/, '- [ ]');
+                                }
+                                break;
+                            }
+                            checkboxCount++;
+                        }
+                    }
+
+                    // Сохранить обновленное содержимое
+                    const newContent = lines.join('\n');
+                    db.run('UPDATE notes SET content = ?, updated_at = ? WHERE id = ?',
+                        [newContent, Date.now(), noteId]);
+                    saveDatabase();
+
+                    // Обновить прогресс
+                    updateChecklistProgress(noteId);
+                });
+            });
+
+            // Показать прогресс при загрузке
+            updateChecklistProgress(noteId);
+        }
+
+        function updateChecklistProgress(noteId) {
+            const result = db.exec('SELECT content FROM notes WHERE id = ?', [noteId]);
+            if (result.length === 0) return;
+
+            const content = result[0].values[0][0];
+            const total = (content.match(/- \[ \]/g) || []).length +
+                         (content.match(/- \[[xX]\]/g) || []).length;
+            const checked = (content.match(/- \[[xX]\]/g) || []).length;
+
+            if (total > 0) {
+                const progressBar = document.querySelector(`[data-note-id="${noteId}"] .checklist-progress`);
+                if (progressBar) {
+                    const percent = Math.round((checked / total) * 100);
+                    progressBar.innerHTML = `
+                        <div style="background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                            <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+                                        height: 20px; width: ${percent}%; transition: width 0.3s;
+                                        display: flex; align-items: center; justify-content: center;
+                                        color: white; font-size: 11px; font-weight: bold;">
+                                ${checked}/${total} (${percent}%)
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // ШАБЛОНЫ ЗАМЕТОК
+        function createNoteFromTemplate() {
+            const result = db.exec('SELECT * FROM templates WHERE user_id = ? ORDER BY is_default DESC, name ASC', [currentUserId]);
+
+            if (result.length === 0 || result[0].values.length === 0) {
+                alert('❌ У вас нет доступных шаблонов!');
+                return;
+            }
+
+            const templates = result[0].values;
+            let templateList = 'Выберите шаблон:\n\n';
+            templates.forEach(([id, userId, name], index) => {
+                templateList += `${index + 1}. ${name}\n`;
+            });
+            templateList += '\n0 - Отмена';
+
+            const choice = prompt(templateList);
+            if (!choice || choice === '0') return;
+
+            const index = parseInt(choice) - 1;
+            if (index >= 0 && index < templates.length) {
+                const template = templates[index];
+                // template: [id, user_id, name, title, content, category, tags, color, is_default, created_at]
+
+                currentNoteId = null;
+                document.getElementById('noteTitle').value = template[3]; // title
+                document.getElementById('noteContent').value = template[4]; // content
+                document.getElementById('noteCategory').value = template[5] || ''; // category
+                document.getElementById('noteTags').value = template[6] || ''; // tags
+                document.getElementById('noteFolder').value = '';
+                document.getElementById('noteFavorite').checked = false;
+                document.getElementById('notePinned').checked = false;
+                document.getElementById('notePassword').value = '';
+                document.getElementById('noteReminder').value = '';
+
+                document.getElementById('deleteNoteBtn').style.display = 'none';
+                document.getElementById('duplicateNoteBtn').style.display = 'none';
+                document.getElementById('printNoteBtn').style.display = 'none';
+
+                selectColor(template[7]); // color
+                document.getElementById('editorModal').classList.add('active');
+                updateWordCount();
+            }
+        }
+
+        function saveAsTemplate() {
+            const name = prompt('Введите название шаблона:');
+            if (!name || !name.trim()) return;
+
+            const title = document.getElementById('noteTitle').value;
+            const content = document.getElementById('noteContent').value;
+            const category = document.getElementById('noteCategory').value;
+            const tags = document.getElementById('noteTags').value;
+
+            if (!content.trim()) {
+                alert('❌ Шаблон не может быть пустым!');
+                return;
+            }
+
+            try {
+                db.run(`INSERT INTO templates (user_id, name, title, content, category, tags, color, is_default, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+                    [currentUserId, name.trim(), title, content, category, tags, currentColor, Date.now()]);
+                saveDatabase();
+                alert(`✅ Шаблон "${name}" успешно сохранен!`);
+            } catch (e) {
+                alert('❌ Ошибка при сохранении шаблона: ' + e.message);
+            }
+        }
+
+        // Дублировать заметку
+        function duplicateNote() {
+            if (!currentNoteId) return;
+
+            const result = db.exec('SELECT * FROM notes WHERE id = ?', [currentNoteId]);
+            if (result.length === 0) return;
+
+            const note = result[0].values[0];
+            const now = Date.now();
+
+            // Создать копию заметки
+            db.run(`INSERT INTO notes (user_id, folder_id, title, content, category, tags, color,
+                    is_favorite, is_pinned, is_archived, is_deleted, password, reminder_date, view_count, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0, ?, ?)`,
+                [note[1], note[2], note[3] + ' (копия)', note[4], note[5], note[6], note[7],
+                 note[12], note[13], now, now]);
+
+            saveDatabase();
+            closeEditor();
+            loadNotes();
+            alert('✅ Заметка успешно дублирована!');
+        }
+
+        // Печать заметки
+        function printNote() {
+            const title = document.getElementById('noteTitle').value;
+            const content = document.getElementById('noteContent').value;
+            const category = document.getElementById('noteCategory').value;
+            const tags = document.getElementById('noteTags').value;
+
+            // Создать временное окно для печати
+            const printWindow = window.open('', '', 'width=800,height=600');
+            const htmlContent = marked.parse(content);
+
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>${title}</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            max-width: 800px;
+                            margin: 40px auto;
+                            padding: 20px;
+                            line-height: 1.6;
+                        }
+                        h1 { color: #667eea; }
+                        .meta { color: #666; margin-bottom: 20px; }
+                        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+                        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+                        @media print {
+                            body { margin: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>${title}</h1>
+                    <div class="meta">
+                        ${category ? '📁 ' + category + ' | ' : ''}
+                        ${tags ? '🏷️ ' + tags : ''}
+                    </div>
+                    <div>${htmlContent}</div>
+                </body>
+                </html>
+            `);
+
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => printWindow.print(), 250);
+        }
+
+        // Счетчик слов и символов
+        function updateWordCount() {
+            const content = document.getElementById('noteContent').value;
+            const words = content.trim().split(/\s+/).filter(w => w.length > 0).length;
+            const chars = content.length;
+            const readTime = Math.ceil(words / 200); // ~200 слов в минуту
+
+            document.getElementById('wordCount').textContent =
+                `Слов: ${words} | Символов: ${chars} | 📖 ${readTime} мин`;
+
+            // Обновить прогресс чек-листа
+            const total = (content.match(/- \[ \]/g) || []).length +
+                         (content.match(/- \[[xX]\]/g) || []).length;
+            const checked = (content.match(/- \[[xX]\]/g) || []).length;
+
+            const progressDiv = document.getElementById('editorChecklistProgress');
+            if (total > 0) {
+                const percent = Math.round((checked / total) * 100);
+                progressDiv.innerHTML = `
+                    <div style="margin-top: 10px;">
+                        <small style="color: #666;">✅ Чек-лист: ${checked}/${total} (${percent}%)</small>
+                        <div style="background: #f0f0f0; border-radius: 10px; overflow: hidden; margin-top: 5px;">
+                            <div style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+                                        height: 8px; width: ${percent}%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                progressDiv.innerHTML = '';
+            }
+        }
+
         // Корзина - восстановление заметок
         function restoreFromTrash(id) {
             if (!confirm('Восстановить заметку из корзины?')) return;
@@ -2019,7 +2518,11 @@
             // Editor
             document.getElementById('newNoteBtn').addEventListener('click', () => {
                 currentNoteId = null;
+                document.getElementById('deleteNoteBtn').style.display = 'none';
+                document.getElementById('duplicateNoteBtn').style.display = 'none';
+                document.getElementById('printNoteBtn').style.display = 'none';
                 document.getElementById('editorModal').classList.add('active');
+                updateWordCount(); // Сбросить счетчик
             });
 
             document.getElementById('quickAdd').addEventListener('click', () => {
@@ -2030,6 +2533,15 @@
             document.getElementById('cancelEditBtn').addEventListener('click', closeEditor);
             document.getElementById('noteForm').addEventListener('submit', saveNote);
             document.getElementById('deleteNoteBtn').addEventListener('click', deleteNote);
+            document.getElementById('duplicateNoteBtn').addEventListener('click', duplicateNote);
+            document.getElementById('printNoteBtn').addEventListener('click', printNote);
+
+            // Шаблоны
+            document.getElementById('fromTemplateBtn').addEventListener('click', createNoteFromTemplate);
+            document.getElementById('saveAsTemplateBtn').addEventListener('click', saveAsTemplate);
+
+            // Счетчик слов/символов
+            document.getElementById('noteContent').addEventListener('input', updateWordCount);
 
             // Colors
             document.querySelectorAll('.color-option').forEach(opt => {
@@ -2282,9 +2794,8 @@
         }
 
         // Инициализация мобильных функций при загрузке
-        if (isMobile()) {
-            window.addEventListener('load', setupMobileFeatures);
-        }
+        // Всегда инициализируем, CSS медиа-запросы управляют отображением
+        window.addEventListener('load', setupMobileFeatures);
 
         // Initialize app
         initApp();
