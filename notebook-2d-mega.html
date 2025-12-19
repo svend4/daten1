@@ -821,6 +821,75 @@
                 margin-bottom: 15px;
             }
         }
+
+        /* 📊 Таблицы в заметках (GFM Tables) */
+        .note-content table,
+        .preview-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .note-content thead,
+        .preview-content thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .note-content th,
+        .preview-content th {
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            border-right: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .note-content th:last-child,
+        .preview-content th:last-child {
+            border-right: none;
+        }
+
+        .note-content td,
+        .preview-content td {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .note-content td:last-child,
+        .preview-content td:last-child {
+            border-right: none;
+        }
+
+        .note-content tbody tr:hover,
+        .preview-content tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .note-content tbody tr:last-child td,
+        .preview-content tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        [data-theme="dark"] .note-content table,
+        [data-theme="dark"] .preview-content table {
+            background: #2d3748;
+        }
+
+        [data-theme="dark"] .note-content td,
+        [data-theme="dark"] .preview-content td {
+            border-color: #4a5568;
+            color: #e2e8f0;
+        }
+
+        [data-theme="dark"] .note-content tbody tr:hover,
+        [data-theme="dark"] .preview-content tbody tr:hover {
+            background: #374151;
+        }
     </style>
 </head>
 <body>
@@ -1082,7 +1151,7 @@
                     <label class="form-label">✍️ Текст заметки (поддержка Markdown):</label>
                     <textarea class="form-textarea" id="noteContent" placeholder="Начните писать... (поддерживает Markdown)"></textarea>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, - [ ] чеклисты</small>
+                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, - [ ] чеклисты, | таблицы |, [[ссылки]]</small>
                         <small id="wordCount" style="color: #667eea; font-weight: bold;">Слов: 0 | Символов: 0</small>
                     </div>
                     <div id="editorChecklistProgress"></div>
@@ -1385,6 +1454,37 @@
                     category: 'Задачи',
                     tags: 'задача, todo',
                     color: 'lightgreen'
+                },
+                {
+                    name: '📊 Таблица',
+                    title: 'Таблица: ',
+                    content: `# Таблица с данными
+
+Пример простой таблицы в формате Markdown:
+
+| Название | Описание | Статус | Приоритет |
+|----------|----------|--------|-----------|
+| Задача 1 | Первая задача | ✅ Готово | Высокий |
+| Задача 2 | Вторая задача | 🔄 В работе | Средний |
+| Задача 3 | Третья задача | ⏸️ Ожидание | Низкий |
+
+## Другой пример
+
+| Продукт | Цена | Количество | Сумма |
+|---------|------|------------|-------|
+| Товар А | 100₽ | 2 | 200₽ |
+| Товар Б | 250₽ | 1 | 250₽ |
+| Товар В | 150₽ | 3 | 450₽ |
+| **Итого** | | | **900₽** |
+
+> 💡 **Совет:** Используйте выравнивание с помощью двоеточий:
+> - \`:---\` - по левому краю
+> - \`:---:\` - по центру
+> - \`---:\` - по правому краю
+`,
+                    category: 'Таблицы',
+                    tags: 'таблица, данные',
+                    color: 'lightblue'
                 }
             ];
 
