@@ -604,22 +604,228 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
+        /* МОБИЛЬНАЯ АДАПТАЦИЯ */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 1001;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .mobile-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+
+        .mobile-overlay.active {
+            display: block;
+        }
+
+        .bottom-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid #ddd;
+            padding: 10px 0;
+            z-index: 100;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+
+        [data-theme="dark"] .bottom-nav {
+            background: #1e1e1e;
+            border-top-color: #444;
+        }
+
+        .bottom-nav-items {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .bottom-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 12px;
+            cursor: pointer;
+            color: #666;
+            font-size: 12px;
+            transition: all 0.3s;
+            border-radius: 8px;
+        }
+
+        [data-theme="dark"] .bottom-nav-item {
+            color: #aaa;
+        }
+
+        .bottom-nav-item:active {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .bottom-nav-item .icon {
+            font-size: 24px;
+        }
+
         @media (max-width: 968px) {
-            .sidebar {
-                display: none;
+            body {
+                padding: 0;
             }
 
             .app-container {
+                max-width: 100%;
+                border-radius: 0;
                 flex-direction: column;
+                height: 100vh;
+            }
+
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: -280px;
+                height: 100%;
+                z-index: 1000;
+                transition: left 0.3s ease;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            }
+
+            .sidebar.active {
+                left: 0;
+            }
+
+            .main-content {
+                width: 100%;
+            }
+
+            .top-bar {
+                padding: 15px;
+                flex-wrap: wrap;
+            }
+
+            .search-bar {
+                min-width: 100%;
+                margin-bottom: 10px;
+            }
+
+            .toolbar {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .content-area {
+                padding: 15px;
+                padding-bottom: 80px;
             }
 
             .notes-grid {
                 grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .note-card {
+                margin-bottom: 0;
+            }
+
+            .modal-content {
+                width: 95%;
+                max-width: 95%;
+                padding: 20px;
+                max-height: 85vh;
+            }
+
+            .quick-add {
+                bottom: 80px;
+            }
+
+            .theme-toggle {
+                top: 20px;
+                right: 20px;
+                width: 45px;
+                height: 45px;
+            }
+
+            .mobile-menu-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .bottom-nav {
+                display: block;
+            }
+
+            .form-input, .form-textarea, .form-select {
+                font-size: 16px;
+            }
+
+            .color-palette {
+                grid-template-columns: repeat(4, 1fr);
+            }
+
+            .btn {
+                min-height: 44px;
+            }
+
+            .sidebar-item {
+                padding: 15px;
+                min-height: 44px;
+            }
+
+            .note-action-btn {
+                width: 40px;
+                height: 40px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .notes-grid {
+                gap: 10px;
+            }
+
+            .content-area {
+                padding: 10px;
+            }
+
+            .top-bar {
+                padding: 10px;
+            }
+
+            .modal-content {
+                padding: 15px;
+            }
+
+            h2.modal-title {
+                font-size: 18px;
+            }
+
+            .form-group {
+                margin-bottom: 15px;
             }
         }
     </style>
 </head>
 <body>
+    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+    <div class="mobile-overlay" id="mobileOverlay"></div>
     <div class="loading active" id="loading">
         <div>⏳ Загрузка супер-блокнота...</div>
         <div class="loading-spinner"></div>
@@ -723,6 +929,32 @@
     </div>
 
     <button class="quick-add" id="quickAdd">+</button>
+
+    <!-- Bottom Navigation (Mobile) -->
+    <nav class="bottom-nav" id="bottomNav">
+        <div class="bottom-nav-items">
+            <div class="bottom-nav-item" data-action="notes">
+                <div class="icon">📝</div>
+                <div>Заметки</div>
+            </div>
+            <div class="bottom-nav-item" data-action="new">
+                <div class="icon">➕</div>
+                <div>Создать</div>
+            </div>
+            <div class="bottom-nav-item" data-action="search">
+                <div class="icon">🔍</div>
+                <div>Поиск</div>
+            </div>
+            <div class="bottom-nav-item" data-action="dashboard">
+                <div class="icon">📊</div>
+                <div>Дашборд</div>
+            </div>
+            <div class="bottom-nav-item" data-action="menu">
+                <div class="icon">☰</div>
+                <div>Меню</div>
+            </div>
+        </div>
+    </nav>
 
     <!-- Dashboard Modal -->
     <div class="modal" id="dashboardModal">
@@ -1872,6 +2104,137 @@
         // 📱 PWA - Service Worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(() => {});
+        }
+
+        // 📱 МОБИЛЬНЫЕ ФУНКЦИИ
+        function setupMobileFeatures() {
+            // Мобильное меню (гамбургер)
+            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+            const sidebar = document.querySelector('.sidebar');
+            const overlay = document.getElementById('mobileOverlay');
+
+            mobileMenuBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                overlay.classList.toggle('active');
+            });
+
+            overlay.addEventListener('click', () => {
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+            });
+
+            // Bottom Navigation
+            document.querySelectorAll('.bottom-nav-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const action = item.dataset.action;
+
+                    if (action === 'notes') {
+                        currentFilter = 'all';
+                        document.querySelectorAll('.sidebar-item[data-filter]').forEach(i => i.classList.remove('active'));
+                        document.querySelector('.sidebar-item[data-filter="all"]').classList.add('active');
+                        loadNotes();
+                    } else if (action === 'new') {
+                        document.getElementById('newNoteBtn').click();
+                    } else if (action === 'search') {
+                        document.getElementById('searchInput').focus();
+                    } else if (action === 'dashboard') {
+                        showDashboard();
+                    } else if (action === 'menu') {
+                        sidebar.classList.add('active');
+                        overlay.classList.add('active');
+                    }
+                });
+            });
+
+            // Touch жесты для заметок (свайп для удаления)
+            let touchStartX = 0;
+            let touchEndX = 0;
+
+            document.addEventListener('touchstart', e => {
+                if (e.target.closest('.note-card')) {
+                    touchStartX = e.changedTouches[0].screenX;
+                }
+            }, { passive: true });
+
+            document.addEventListener('touchend', e => {
+                const noteCard = e.target.closest('.note-card');
+                if (!noteCard) return;
+
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe(noteCard);
+            }, { passive: true });
+
+            function handleSwipe(card) {
+                const swipeDistance = touchEndX - touchStartX;
+
+                // Свайп вправо > 100px - избранное
+                if (swipeDistance > 100) {
+                    const noteId = parseInt(card.dataset.id);
+                    toggleFavorite(noteId);
+                }
+                // Свайп влево > 100px - показать действия
+                else if (swipeDistance < -100) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+
+            // Предотвращение zoom при двойном тапе
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', e => {
+                const now = Date.now();
+                if (now - lastTouchEnd <= 300) {
+                    e.preventDefault();
+                }
+                lastTouchEnd = now;
+            }, { passive: false });
+
+            // Вибрация при важных действиях (если поддерживается)
+            window.vibrate = (pattern) => {
+                if ('vibrate' in navigator) {
+                    navigator.vibrate(pattern);
+                }
+            };
+
+            // Pull to refresh (экспериментально)
+            let startY = 0;
+            const contentArea = document.querySelector('.content-area');
+
+            contentArea.addEventListener('touchstart', e => {
+                startY = e.touches[0].clientY;
+            }, { passive: true });
+
+            contentArea.addEventListener('touchmove', e => {
+                const currentY = e.touches[0].clientY;
+                const diff = currentY - startY;
+
+                // Если прокрутка вверху и тянем вниз
+                if (contentArea.scrollTop === 0 && diff > 80) {
+                    loadNotes();
+                    window.vibrate && vibrate(50);
+
+                    // Показать индикатор обновления
+                    const loading = document.getElementById('loading');
+                    loading.classList.add('active');
+                    setTimeout(() => loading.classList.remove('active'), 1000);
+                }
+            }, { passive: true });
+
+            // Адаптация viewport при появлении клавиатуры
+            window.visualViewport?.addEventListener('resize', () => {
+                const vh = window.visualViewport.height;
+                document.documentElement.style.setProperty('--vh', `${vh}px`);
+            });
+        }
+
+        // Определение мобильного устройства
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                || window.innerWidth <= 968;
+        }
+
+        // Инициализация мобильных функций при загрузке
+        if (isMobile()) {
+            window.addEventListener('load', setupMobileFeatures);
         }
 
         // Initialize app
