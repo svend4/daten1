@@ -2295,9 +2295,8 @@
         }
 
         // Инициализация мобильных функций при загрузке
-        if (isMobile()) {
-            window.addEventListener('load', setupMobileFeatures);
-        }
+        // Всегда инициализируем, CSS медиа-запросы управляют отображением
+        window.addEventListener('load', setupMobileFeatures);
 
         // Initialize app
         initApp();
