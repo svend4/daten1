@@ -1155,6 +1155,14 @@
                         <small id="wordCount" style="color: #667eea; font-weight: bold;">Слов: 0 | Символов: 0</small>
                     </div>
                     <div id="editorChecklistProgress"></div>
+                    <!-- Размер шрифта -->
+                    <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                        <small style="color: #666;">🔠 Размер шрифта:</small>
+                        <button type="button" onclick="changeFontSize('small')" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px;">A-</button>
+                        <button type="button" onclick="changeFontSize('medium')" class="btn btn-secondary" style="padding: 5px 12px; font-size: 14px;">A</button>
+                        <button type="button" onclick="changeFontSize('large')" class="btn btn-secondary" style="padding: 5px 12px; font-size: 16px;">A+</button>
+                        <small id="currentFontSize" style="color: #667eea; font-weight: bold;">Средний</small>
+                    </div>
                 </div>
 
                 <!-- Обратные ссылки (Backlinks) -->
@@ -1238,6 +1246,7 @@
                 loadNotes();
                 updateSidebarCounts();
                 setupEventListeners();
+                applySavedFontSize(); // Применить сохраненный размер шрифта
                 checkReminders();
             } catch (error) {
                 console.error('Error:', error);
@@ -2458,13 +2467,14 @@
 
         // Функции экспорта
         function exportAllNotes() {
-            const format = prompt('Выберите формат экспорта:\n1 - TXT\n2 - HTML\n3 - JSON\n4 - SQLite DB\n5 - PDF');
+            const format = prompt('Выберите формат экспорта:\n1 - TXT\n2 - HTML\n3 - JSON\n4 - SQLite DB\n5 - PDF\n6 - Markdown');
 
             if (format === '1') exportToTXT();
             else if (format === '2') exportToHTML();
             else if (format === '3') exportToJSON();
             else if (format === '4') exportDB();
             else if (format === '5') exportToPDF();
+            else if (format === '6') exportToMarkdown();
         }
 
         function exportToTXT() {
@@ -2483,6 +2493,40 @@
             });
 
             downloadFile('notes.txt', txt, 'text/plain');
+        }
+
+        function exportToMarkdown() {
+            const result = db.exec('SELECT title, content, category, tags, created_at FROM notes WHERE user_id = ? AND is_deleted = 0 ORDER BY created_at DESC',
+                [currentUserId]);
+
+            if (result.length === 0) return alert('Нет заметок для экспорта');
+
+            let markdown = '# 📔 Мои заметки\n\n';
+            markdown += `> Экспортировано: ${new Date().toLocaleString('ru-RU')}\n\n`;
+            markdown += `> Всего заметок: ${result[0].values.length}\n\n`;
+            markdown += '---\n\n';
+
+            result[0].values.forEach(([title, content, category, tags, createdAt]) => {
+                // Заголовок заметки
+                markdown += `## ${title}\n\n`;
+
+                // Метаданные
+                markdown += `**📅 Дата:** ${new Date(createdAt).toLocaleString('ru-RU')}  \n`;
+                if (category) markdown += `**🏷️ Категория:** ${category}  \n`;
+                if (tags) {
+                    const tagsArr = tags.split(',').map(t => t.trim());
+                    markdown += `**🏷️ Теги:** ${tagsArr.map(t => `\`${t}\``).join(', ')}  \n`;
+                }
+                markdown += '\n';
+
+                // Содержимое (уже в Markdown формате)
+                markdown += content + '\n\n';
+
+                // Разделитель
+                markdown += '---\n\n';
+            });
+
+            downloadFile('notes.md', markdown, 'text/markdown');
         }
 
         function exportToHTML() {
@@ -2883,6 +2927,41 @@
             } else {
                 progressDiv.innerHTML = '';
             }
+        }
+
+        // 🔠 Изменение размера шрифта в редакторе
+        function changeFontSize(size) {
+            const textarea = document.getElementById('noteContent');
+            const sizeLabel = document.getElementById('currentFontSize');
+
+            let fontSize, label;
+            switch(size) {
+                case 'small':
+                    fontSize = '14px';
+                    label = 'Маленький';
+                    break;
+                case 'large':
+                    fontSize = '18px';
+                    label = 'Большой';
+                    break;
+                case 'medium':
+                default:
+                    fontSize = '16px';
+                    label = 'Средний';
+                    break;
+            }
+
+            textarea.style.fontSize = fontSize;
+            sizeLabel.textContent = label;
+
+            // Сохранить настройку
+            localStorage.setItem('editorFontSize', size);
+        }
+
+        // Применить сохраненный размер шрифта при загрузке
+        function applySavedFontSize() {
+            const savedSize = localStorage.getItem('editorFontSize') || 'medium';
+            changeFontSize(savedSize);
         }
 
         // Корзина - восстановление заметок
