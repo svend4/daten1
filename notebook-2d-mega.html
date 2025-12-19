@@ -73,6 +73,28 @@
             100% { transform: rotate(360deg); }
         }
 
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
         .app-container {
             width: 100%;
             max-width: 1400px;
@@ -919,7 +941,11 @@
                 <div class="sidebar-item" data-view="dashboard">
                     📊 Дашборд
                 </div>
-                <div class="sidebar-item active" data-filter="all">
+                <div class="sidebar-item active"
+                     data-filter="all"
+                     ondragover="event.preventDefault(); event.currentTarget.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'; event.currentTarget.style.border = '2px dashed #fff';"
+                     ondragleave="event.currentTarget.style.background = ''; event.currentTarget.style.border = '';"
+                     ondrop="handleAllNotesDrop(event)">
                     📝 Все заметки
                     <span class="sidebar-item-count" id="countAll">0</span>
                 </div>
@@ -1686,7 +1712,12 @@
                 return folders.map(folder => {
                     const count = getFolderNoteCount(folder.id);
                     return `
-                        <div class="sidebar-item" data-folder="${folder.id}" style="padding-left: ${10 + indent * 15}px;">
+                        <div class="sidebar-item folder-item"
+                             data-folder="${folder.id}"
+                             style="padding-left: ${10 + indent * 15}px;"
+                             ondragover="handleFolderDragOver(event, ${folder.id})"
+                             ondragleave="handleFolderDragLeave(event)"
+                             ondrop="handleFolderDrop(event, ${folder.id})">
                             ${'└─'.repeat(Math.min(indent, 1))}${indent > 0 ? ' ' : ''}📁 ${folder.name}
                             <span class="sidebar-item-count">${count}</span>
                         </div>
@@ -1900,7 +1931,11 @@
                     <div class="note-card ${note.is_pinned ? 'pinned' : ''}"
                          data-color="${note.color}"
                          data-id="${note.id}"
-                         data-password="${note.password ? 'true' : 'false'}">
+                         data-folder-id="${note.folder_id || ''}"
+                         data-password="${note.password ? 'true' : 'false'}"
+                         draggable="${!note.is_deleted && !bulkSelectMode}"
+                         ondragstart="handleNoteDragStart(event)"
+                         ondragend="handleNoteDragEnd(event)">
                         ${bulkSelectMode && !note.is_deleted ?
                             `<div style="padding: 10px 15px; border-bottom: 1px solid #eee; background: #f8f9fa;">
                                 <label style="display: flex; align-items: center; cursor: pointer;">
@@ -2757,6 +2792,110 @@
         // Открыть модальное окно импорта
         function openImport() {
             document.getElementById('importModal').classList.add('active');
+        }
+
+        // 🎯 DRAG & DROP
+        let draggedNoteId = null;
+
+        function handleNoteDragStart(event) {
+            const noteCard = event.target.closest('.note-card');
+            draggedNoteId = parseInt(noteCard.dataset.id);
+            noteCard.style.opacity = '0.5';
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/html', noteCard.innerHTML);
+        }
+
+        function handleNoteDragEnd(event) {
+            event.target.closest('.note-card').style.opacity = '1';
+            draggedNoteId = null;
+            // Убрать все индикаторы перетаскивания
+            document.querySelectorAll('.folder-item, .sidebar-item').forEach(el => {
+                el.style.background = '';
+                el.style.border = '';
+            });
+        }
+
+        function handleFolderDragOver(event, folderId) {
+            if (!draggedNoteId) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+
+            // Визуальный индикатор
+            const folderElement = event.currentTarget;
+            folderElement.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            folderElement.style.border = '2px dashed #fff';
+        }
+
+        function handleFolderDragLeave(event) {
+            const folderElement = event.currentTarget;
+            folderElement.style.background = '';
+            folderElement.style.border = '';
+        }
+
+        function handleFolderDrop(event, folderId) {
+            event.preventDefault();
+            if (!draggedNoteId) return;
+
+            // Переместить заметку в папку
+            db.run('UPDATE notes SET folder_id = ?, updated_at = ? WHERE id = ?',
+                [folderId, Date.now(), draggedNoteId]);
+
+            saveDatabase();
+            loadNotes();
+            loadFolders();
+
+            // Убрать визуальные индикаторы
+            const folderElement = event.currentTarget;
+            folderElement.style.background = '';
+            folderElement.style.border = '';
+
+            // Показать уведомление
+            const folderResult = db.exec('SELECT name FROM folders WHERE id = ?', [folderId]);
+            const folderName = folderResult.length > 0 ? folderResult[0].values[0][0] : 'папку';
+            showTempNotification(`✅ Заметка перемещена в "${folderName}"`);
+        }
+
+        function handleAllNotesDrop(event) {
+            event.preventDefault();
+            if (!draggedNoteId) return;
+
+            // Переместить заметку в корень (убрать из папки)
+            db.run('UPDATE notes SET folder_id = NULL, updated_at = ? WHERE id = ?',
+                [Date.now(), draggedNoteId]);
+
+            saveDatabase();
+            loadNotes();
+            loadFolders();
+
+            // Убрать визуальные индикаторы
+            event.currentTarget.style.background = '';
+            event.currentTarget.style.border = '';
+
+            showTempNotification(`✅ Заметка перемещена в "Все заметки"`);
+        }
+
+        function showTempNotification(message) {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 15px 25px;
+                border-radius: 10px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                z-index: 10000;
+                font-weight: 500;
+                animation: slideIn 0.3s ease;
+            `;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 2500);
         }
 
         // 🔗 WIKI-ССЫЛКИ [[название]]
