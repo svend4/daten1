@@ -27,6 +27,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
         }
 
         body {
@@ -37,7 +38,6 @@
             justify-content: center;
             align-items: center;
             padding: 20px;
-            transition: all 0.3s;
         }
 
         .loading {
@@ -911,6 +911,64 @@
         [data-theme="dark"] .note-content tbody tr:hover,
         [data-theme="dark"] .preview-content tbody tr:hover {
             background: #374151;
+        }
+
+        /* Дополнительные стили для тёмной темы */
+        [data-theme="dark"] .sidebar {
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+        }
+
+        [data-theme="dark"] .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        [data-theme="dark"] .btn-secondary {
+            background: #374151;
+            color: #e2e8f0;
+        }
+
+        [data-theme="dark"] .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        [data-theme="dark"] .form-input,
+        [data-theme="dark"] .form-textarea,
+        [data-theme="dark"] .form-select {
+            background: #374151;
+            color: #e2e8f0;
+            border-color: #4b5563;
+        }
+
+        [data-theme="dark"] .search-bar {
+            background: #374151;
+            color: #e2e8f0;
+            border-color: #4b5563;
+        }
+
+        [data-theme="dark"] .badge {
+            background: #374151;
+            color: #e2e8f0;
+        }
+
+        [data-theme="dark"] .theme-toggle {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        [data-theme="dark"] .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        [data-theme="dark"] .empty-state {
+            color: #9ca3af;
+        }
+
+        [data-theme="dark"] .user-profile {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        [data-theme="dark"] .color-palette .color-option {
+            border-color: #4b5563;
         }
     </style>
 </head>
