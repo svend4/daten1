@@ -1063,7 +1063,10 @@
                 <div class="form-group">
                     <label class="form-label">✍️ Текст заметки (поддержка Markdown):</label>
                     <textarea class="form-textarea" id="noteContent" placeholder="Начните писать... (поддерживает Markdown)"></textarea>
-                    <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, [ ] чеклисты</small>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                        <small style="color: #666;">Поддержка: **жирный**, *курсив*, - списки, # заголовки, [ ] чеклисты</small>
+                        <small id="wordCount" style="color: #667eea; font-weight: bold;">Слов: 0 | Символов: 0</small>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -1075,8 +1078,10 @@
                     </label>
                 </div>
 
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                    <button type="button" class="btn btn-success" id="duplicateNoteBtn" style="display: none;">📋 Дублировать</button>
+                    <button type="button" class="btn btn-secondary" id="printNoteBtn" style="display: none;">🖨️ Печать</button>
                     <button type="button" class="btn btn-danger" id="deleteNoteBtn" style="display: none;">🗑️ Удалить</button>
                     <button type="button" class="btn btn-secondary" id="cancelEditBtn">❌ Отмена</button>
                 </div>
@@ -1182,12 +1187,20 @@
                     is_deleted INTEGER DEFAULT 0,
                     password TEXT,
                     reminder_date INTEGER,
+                    view_count INTEGER DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
                     FOREIGN KEY (user_id) REFERENCES users(id),
                     FOREIGN KEY (folder_id) REFERENCES folders(id)
                 )
             `);
+
+            // Миграция: добавить view_count для существующих БД
+            try {
+                db.run(`ALTER TABLE notes ADD COLUMN view_count INTEGER DEFAULT 0`);
+            } catch (e) {
+                // Колонка уже существует
+            }
 
             // История версий
             db.run(`
@@ -1319,8 +1332,9 @@
                 is_deleted: row[11],
                 password: row[12],
                 reminder_date: row[13],
-                created_at: row[14],
-                updated_at: row[15]
+                view_count: row[14] || 0,
+                created_at: row[15],
+                updated_at: row[16]
             })) : [];
 
             renderNotes(notes);
@@ -1357,6 +1371,10 @@
 
                 const hasReminder = note.reminder_date && note.reminder_date > Date.now();
 
+                // Время чтения
+                const words = note.content.trim().split(/\s+/).filter(w => w.length > 0).length;
+                const readTime = Math.ceil(words / 200); // ~200 слов в минуту
+
                 return `
                     <div class="note-card ${note.is_pinned ? 'pinned' : ''}"
                          data-color="${note.color}"
@@ -1391,7 +1409,8 @@
 
                         <div class="note-footer">
                             <span>${new Date(note.created_at).toLocaleDateString('ru-RU')}</span>
-                            ${hasReminder ? '<span>📅 ' + new Date(note.reminder_date).toLocaleDateString('ru-RU') + '</span>' : ''}
+                            ${readTime > 0 ? '<span>📖 ' + readTime + ' мин</span>' : ''}
+                            ${note.view_count > 0 ? '<span>👁️ ' + note.view_count + '</span>' : ''}
                         </div>
                     </div>
                 `;
@@ -1527,9 +1546,18 @@
             }
 
             document.getElementById('deleteNoteBtn').style.display = 'block';
+            document.getElementById('duplicateNoteBtn').style.display = 'block';
+            document.getElementById('printNoteBtn').style.display = 'block';
 
             selectColor(note[7]);
             document.getElementById('editorModal').classList.add('active');
+
+            // Обновить счетчик слов
+            updateWordCount();
+
+            // Увеличить счетчик просмотров
+            db.run('UPDATE notes SET view_count = view_count + 1 WHERE id = ?', [id]);
+            saveDatabase();
         }
 
         function deleteNote() {
@@ -2012,6 +2040,89 @@
             URL.revokeObjectURL(url);
         }
 
+        // Дублировать заметку
+        function duplicateNote() {
+            if (!currentNoteId) return;
+
+            const result = db.exec('SELECT * FROM notes WHERE id = ?', [currentNoteId]);
+            if (result.length === 0) return;
+
+            const note = result[0].values[0];
+            const now = Date.now();
+
+            // Создать копию заметки
+            db.run(`INSERT INTO notes (user_id, folder_id, title, content, category, tags, color,
+                    is_favorite, is_pinned, is_archived, is_deleted, password, reminder_date, view_count, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0, ?, ?)`,
+                [note[1], note[2], note[3] + ' (копия)', note[4], note[5], note[6], note[7],
+                 note[12], note[13], now, now]);
+
+            saveDatabase();
+            closeEditor();
+            loadNotes();
+            alert('✅ Заметка успешно дублирована!');
+        }
+
+        // Печать заметки
+        function printNote() {
+            const title = document.getElementById('noteTitle').value;
+            const content = document.getElementById('noteContent').value;
+            const category = document.getElementById('noteCategory').value;
+            const tags = document.getElementById('noteTags').value;
+
+            // Создать временное окно для печати
+            const printWindow = window.open('', '', 'width=800,height=600');
+            const htmlContent = marked.parse(content);
+
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>${title}</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            max-width: 800px;
+                            margin: 40px auto;
+                            padding: 20px;
+                            line-height: 1.6;
+                        }
+                        h1 { color: #667eea; }
+                        .meta { color: #666; margin-bottom: 20px; }
+                        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+                        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+                        @media print {
+                            body { margin: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>${title}</h1>
+                    <div class="meta">
+                        ${category ? '📁 ' + category + ' | ' : ''}
+                        ${tags ? '🏷️ ' + tags : ''}
+                    </div>
+                    <div>${htmlContent}</div>
+                </body>
+                </html>
+            `);
+
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => printWindow.print(), 250);
+        }
+
+        // Счетчик слов и символов
+        function updateWordCount() {
+            const content = document.getElementById('noteContent').value;
+            const words = content.trim().split(/\s+/).filter(w => w.length > 0).length;
+            const chars = content.length;
+            const readTime = Math.ceil(words / 200); // ~200 слов в минуту
+
+            document.getElementById('wordCount').textContent =
+                `Слов: ${words} | Символов: ${chars} | 📖 ${readTime} мин`;
+        }
+
         // Корзина - восстановление заметок
         function restoreFromTrash(id) {
             if (!confirm('Восстановить заметку из корзины?')) return;
@@ -2032,7 +2143,11 @@
             // Editor
             document.getElementById('newNoteBtn').addEventListener('click', () => {
                 currentNoteId = null;
+                document.getElementById('deleteNoteBtn').style.display = 'none';
+                document.getElementById('duplicateNoteBtn').style.display = 'none';
+                document.getElementById('printNoteBtn').style.display = 'none';
                 document.getElementById('editorModal').classList.add('active');
+                updateWordCount(); // Сбросить счетчик
             });
 
             document.getElementById('quickAdd').addEventListener('click', () => {
@@ -2043,6 +2158,11 @@
             document.getElementById('cancelEditBtn').addEventListener('click', closeEditor);
             document.getElementById('noteForm').addEventListener('submit', saveNote);
             document.getElementById('deleteNoteBtn').addEventListener('click', deleteNote);
+            document.getElementById('duplicateNoteBtn').addEventListener('click', duplicateNote);
+            document.getElementById('printNoteBtn').addEventListener('click', printNote);
+
+            // Счетчик слов/символов
+            document.getElementById('noteContent').addEventListener('input', updateWordCount);
 
             // Colors
             document.querySelectorAll('.color-option').forEach(opt => {
