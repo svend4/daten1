@@ -1549,6 +1549,16 @@
                          data-color="${note.color}"
                          data-id="${note.id}"
                          data-password="${note.password ? 'true' : 'false'}">
+                        ${bulkSelectMode && !note.is_deleted ?
+                            `<div style="padding: 10px 15px; border-bottom: 1px solid #eee; background: #f8f9fa;">
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox"
+                                           onchange="toggleNoteSelection(${note.id}, event)"
+                                           ${selectedNotes.has(note.id) ? 'checked' : ''}
+                                           style="width: 20px; height: 20px; margin-right: 10px; cursor: pointer;">
+                                    <span style="color: #666;">Выбрать заметку</span>
+                                </label>
+                            </div>` : ''}
                         <div class="note-header">
                             <h3 class="note-title">${note.password ? '🔒 ' : ''}${note.title}</h3>
                             <div class="note-actions">
@@ -2052,6 +2062,112 @@
             } else {
                 alert('Заметка "' + title + '" не найдена');
             }
+        }
+
+        // ☑️ МАССОВЫЕ ОПЕРАЦИИ
+        function toggleBulkMode() {
+            bulkSelectMode = !bulkSelectMode;
+            selectedNotes.clear();
+            document.getElementById('bulkSelectBtn').textContent = bulkSelectMode ? '❌ Отменить' : '☑️ Выбрать';
+            document.getElementById('bulkActionsPanel').style.display = bulkSelectMode ? 'block' : 'none';
+            document.getElementById('selectedCount').textContent = 'Выбрано: 0';
+            loadNotes();
+        }
+
+        function toggleNoteSelection(noteId, event) {
+            event.stopPropagation();
+            if (selectedNotes.has(noteId)) {
+                selectedNotes.delete(noteId);
+            } else {
+                selectedNotes.add(noteId);
+            }
+            document.getElementById('selectedCount').textContent = `Выбрано: ${selectedNotes.size}`;
+            // Обновить чекбокс
+            const checkbox = event.target;
+            checkbox.checked = selectedNotes.has(noteId);
+        }
+
+        function bulkDelete() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для удаления');
+                return;
+            }
+            if (!confirm(`Удалить ${selectedNotes.size} заметок в корзину?`)) return;
+
+            selectedNotes.forEach(id => {
+                db.run('UPDATE notes SET is_deleted = 1 WHERE id = ?', [id]);
+            });
+            saveDatabase();
+            selectedNotes.clear();
+            toggleBulkMode();
+        }
+
+        function bulkMove() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для перемещения');
+                return;
+            }
+            const result = db.exec('SELECT id, name FROM folders WHERE user_id = ?', [currentUserId]);
+            if (result.length === 0 || result[0].values.length === 0) {
+                alert('❌ Сначала создайте папку!');
+                return;
+            }
+            const folders = result[0].values;
+            let list = 'Выберите папку для перемещения:\n\n';
+            folders.forEach(([id, name], i) => {
+                list += `${i + 1}. ${name}\n`;
+            });
+            const choice = prompt(list);
+            if (!choice) return;
+
+            const index = parseInt(choice) - 1;
+            if (index >= 0 && index < folders.length) {
+                const folderId = folders[index][0];
+                selectedNotes.forEach(id => {
+                    db.run('UPDATE notes SET folder_id = ? WHERE id = ?', [folderId, id]);
+                });
+                saveDatabase();
+                selectedNotes.clear();
+                toggleBulkMode();
+            }
+        }
+
+        function bulkAddTag() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для добавления тега');
+                return;
+            }
+            const tag = prompt('Введите тег для добавления:');
+            if (!tag) return;
+
+            selectedNotes.forEach(id => {
+                const result = db.exec('SELECT tags FROM notes WHERE id = ?', [id]);
+                if (result.length > 0 && result[0].values.length > 0) {
+                    const tags = result[0].values[0][0] || '';
+                    const tagsArray = tags ? tags.split(',').map(t => t.trim()) : [];
+                    if (!tagsArray.includes(tag)) {
+                        tagsArray.push(tag);
+                        const newTags = tagsArray.join(', ');
+                        db.run('UPDATE notes SET tags = ? WHERE id = ?', [newTags, id]);
+                    }
+                }
+            });
+            saveDatabase();
+            selectedNotes.clear();
+            toggleBulkMode();
+        }
+
+        function bulkFavorite() {
+            if (selectedNotes.size === 0) {
+                alert('❌ Выберите заметки для добавления в избранное');
+                return;
+            }
+            selectedNotes.forEach(id => {
+                db.run('UPDATE notes SET is_favorite = 1 WHERE id = ?', [id]);
+            });
+            saveDatabase();
+            selectedNotes.clear();
+            toggleBulkMode();
         }
 
         // 🎨 Highlight.js и Mermaid инициализация
@@ -2610,6 +2726,14 @@
 
             // Switch User
             document.getElementById('switchUserBtn').addEventListener('click', switchUser);
+
+            // Bulk operations
+            document.getElementById('bulkSelectBtn').addEventListener('click', toggleBulkMode);
+            document.getElementById('bulkDeleteBtn').addEventListener('click', bulkDelete);
+            document.getElementById('bulkMoveBtn').addEventListener('click', bulkMove);
+            document.getElementById('bulkTagBtn').addEventListener('click', bulkAddTag);
+            document.getElementById('bulkFavoriteBtn').addEventListener('click', bulkFavorite);
+            document.getElementById('bulkCancelBtn').addEventListener('click', toggleBulkMode);
         }
 
         // Функция смены пользователя
