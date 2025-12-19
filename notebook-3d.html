@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📕 3D Записная Книжка</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            max-width: 350px;
+        }
+
+        .title {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .input-group {
+            margin: 10px 0;
+        }
+
+        .input-group label {
+            color: #fff;
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .input-group input,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .input-group textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .input-group input:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .notes-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 15px 0;
+        }
+
+        .note-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px;
+            margin: 8px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .note-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #667eea;
+        }
+
+        .note-item.active {
+            background: rgba(102, 126, 234, 0.3);
+            border-color: #667eea;
+        }
+
+        .note-item-title {
+            color: #fff;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .note-item-preview {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .editor-panel {
+            display: none;
+        }
+
+        .editor-panel.active {
+            display: block;
+        }
+
+        .stats {
+            color: #fff;
+            text-align: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .stats-item {
+            display: inline-block;
+            margin: 0 10px;
+        }
+
+        .stats-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stats-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            padding: 15px;
+            pointer-events: auto;
+            color: #fff;
+            font-size: 14px;
+            max-width: 300px;
+            backdrop-filter: blur(10px);
+        }
+
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.5);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(102, 126, 234, 0.8);
+        }
+
+        /* Кнопка переключения панели на мобильных */
+        .toggle-panel-btn {
+            display: none;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            color: #fff;
+            cursor: pointer;
+            z-index: 100;
+            pointer-events: auto;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .toggle-panel-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Подсказка для мобильных */
+        .mobile-hint {
+            display: none;
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        @media (max-width: 768px) {
+            .control-panel {
+                top: 60px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                max-height: 70vh;
+                overflow-y: auto;
+                transition: transform 0.3s;
+            }
+
+            .control-panel.hidden {
+                transform: translateX(150%);
+            }
+
+            .toggle-panel-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .instructions {
+                display: none;
+            }
+
+            .mobile-hint {
+                display: block;
+            }
+
+            .btn {
+                padding: 15px;
+                font-size: 18px;
+                touch-action: manipulation;
+            }
+
+            .input-group input,
+            .input-group textarea {
+                font-size: 16px;
+                padding: 12px;
+            }
+
+            .notes-list {
+                max-height: 200px;
+            }
+
+            .note-item {
+                padding: 12px;
+                touch-action: manipulation;
+            }
+
+            .title {
+                font-size: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .control-panel {
+                max-height: 60vh;
+            }
+
+            .btn {
+                padding: 12px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="ui-overlay">
+        <!-- Кнопка переключения панели -->
+        <button class="toggle-panel-btn" onclick="togglePanel()">📋</button>
+
+        <!-- Подсказка для мобильных -->
+        <div class="mobile-hint">👆 Листайте пальцем для вращения | 🤏 Щипок для зума</div>
+
+        <div class="control-panel" id="controlPanel">
+            <div class="title">📕 3D Блокнот</div>
+
+            <!-- Список заметок -->
+            <div id="listView">
+                <div class="stats">
+                    <div class="stats-item">
+                        <div class="stats-number" id="noteCount">0</div>
+                        <div class="stats-label">Заметок</div>
+                    </div>
+                    <div class="stats-item">
+                        <div class="stats-number" id="wordCount">0</div>
+                        <div class="stats-label">Слов</div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="showEditor()">
+                    ➕ Новая Заметка
+                </button>
+
+                <div class="notes-list" id="notesList">
+                    <div style="color: rgba(255,255,255,0.5); text-align: center; padding: 20px;">
+                        Заметок пока нет
+                    </div>
+                </div>
+
+                <button class="btn btn-success" onclick="exportNotes()">
+                    💾 Экспорт заметок
+                </button>
+            </div>
+
+            <!-- Редактор -->
+            <div id="editorView" class="editor-panel">
+                <div class="input-group">
+                    <label>📌 Заголовок:</label>
+                    <input type="text" id="noteTitle" placeholder="Введите заголовок...">
+                </div>
+
+                <div class="input-group">
+                    <label>✍️ Текст заметки:</label>
+                    <textarea id="noteContent" placeholder="Начните писать..."></textarea>
+                </div>
+
+                <button class="btn btn-primary" onclick="saveNote()">
+                    💾 Сохранить
+                </button>
+                <button class="btn btn-danger" onclick="deleteCurrentNote()" id="deleteBtn" style="display: none;">
+                    🗑️ Удалить
+                </button>
+                <button class="btn" style="background: #666; color: #fff;" onclick="cancelEdit()">
+                    ❌ Отмена
+                </button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>🎮 Управление:</h3>
+            <p>🖱️ Мышь - вращение блокнота<br>
+               🔍 Колесо - приближение<br>
+               📝 Заметки отображаются на страницах</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Three.js сцена
+        let scene, camera, renderer, notebook, pages = [];
+        let currentNoteId = null;
+        let notes = [];
+
+        // Управление камерой
+        let mouseX = 0, mouseY = 0;
+        let targetRotationX = 0, targetRotationY = 0;
+
+        // Инициализация Three.js
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+
+            // Сцена
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1e3c72);
+            scene.fog = new THREE.Fog(0x1e3c72, 50, 200);
+
+            // Камера
+            camera = new THREE.PerspectiveCamera(
+                45,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 5, 25);
+            camera.lookAt(0, 0, 0);
+
+            // Рендерер
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Освещение
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            const pointLight = new THREE.PointLight(0xffd700, 0.5, 50);
+            pointLight.position.set(-10, 10, 10);
+            scene.add(pointLight);
+
+            // Создание блокнота
+            createNotebook();
+
+            // Управление мышью
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('wheel', onMouseWheel);
+
+            // Управление касаниями (мобильные)
+            setupTouchControls();
+
+            // Адаптация размера
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // Настройка тач-управления
+        function setupTouchControls() {
+            let touchStartX = 0, touchStartY = 0;
+            let lastTouchX = 0, lastTouchY = 0;
+            let touchDistance = 0;
+            let isTwoFingerTouch = false;
+
+            renderer.domElement.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+
+                if (e.touches.length === 1) {
+                    touchStartX = lastTouchX = e.touches[0].clientX;
+                    touchStartY = lastTouchY = e.touches[0].clientY;
+                    isTwoFingerTouch = false;
+                } else if (e.touches.length === 2) {
+                    // Pinch to zoom
+                    isTwoFingerTouch = true;
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    touchDistance = Math.sqrt(dx * dx + dy * dy);
+                }
+            }, { passive: false });
+
+            renderer.domElement.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+
+                if (e.touches.length === 1 && !isTwoFingerTouch) {
+                    const touchX = e.touches[0].clientX;
+                    const touchY = e.touches[0].clientY;
+
+                    const deltaX = touchX - lastTouchX;
+                    const deltaY = touchY - lastTouchY;
+
+                    targetRotationY += deltaX * 0.005;
+                    targetRotationX += deltaY * 0.003;
+
+                    // Ограничение вращения по X
+                    targetRotationX = Math.max(-0.5, Math.min(0.5, targetRotationX));
+
+                    lastTouchX = touchX;
+                    lastTouchY = touchY;
+                } else if (e.touches.length === 2 && isTwoFingerTouch) {
+                    // Pinch to zoom
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    const delta = distance - touchDistance;
+                    camera.position.z -= delta * 0.05;
+                    camera.position.z = Math.max(15, Math.min(40, camera.position.z));
+
+                    touchDistance = distance;
+                }
+            }, { passive: false });
+
+            renderer.domElement.addEventListener('touchend', () => {
+                isTwoFingerTouch = false;
+            });
+        }
+
+        // Создание 3D блокнота
+        function createNotebook() {
+            notebook = new THREE.Group();
+
+            // Обложка
+            const coverGeometry = new THREE.BoxGeometry(12, 16, 0.5);
+            const coverMaterial = new THREE.MeshPhongMaterial({
+                color: 0x8b4513,
+                shininess: 30
+            });
+            const cover = new THREE.Mesh(coverGeometry, coverMaterial);
+            cover.castShadow = true;
+            cover.receiveShadow = true;
+            notebook.add(cover);
+
+            // Декоративная окантовка обложки
+            const borderGeometry = new THREE.BoxGeometry(11, 15, 0.6);
+            const borderMaterial = new THREE.MeshPhongMaterial({
+                color: 0x654321
+            });
+            const border = new THREE.Mesh(borderGeometry, borderMaterial);
+            border.position.z = 0.05;
+            notebook.add(border);
+
+            // Заголовок на обложке
+            createCoverText();
+
+            // Страницы
+            for (let i = 0; i < 5; i++) {
+                const pageGroup = new THREE.Group();
+
+                const pageGeometry = new THREE.BoxGeometry(11.5, 15.5, 0.05);
+                const pageMaterial = new THREE.MeshPhongMaterial({
+                    color: 0xfffef0,
+                    side: THREE.DoubleSide
+                });
+                const page = new THREE.Mesh(pageGeometry, pageMaterial);
+                page.position.z = 0.3 + i * 0.1;
+                page.castShadow = true;
+                page.receiveShadow = true;
+
+                pageGroup.add(page);
+                pageGroup.userData.pageIndex = i;
+                pages.push(pageGroup);
+                notebook.add(pageGroup);
+            }
+
+            // Закладка
+            const bookmarkGeometry = new THREE.BoxGeometry(0.3, 10, 0.1);
+            const bookmarkMaterial = new THREE.MeshPhongMaterial({
+                color: 0xff0000
+            });
+            const bookmark = new THREE.Mesh(bookmarkGeometry, bookmarkMaterial);
+            bookmark.position.set(5.5, 0, 0.8);
+            notebook.add(bookmark);
+
+            scene.add(notebook);
+        }
+
+        // Создание текста на обложке
+        function createCoverText() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#f4e4c1';
+            ctx.font = 'bold 60px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('МОЯ', 256, 200);
+            ctx.fillText('ЗАПИСНАЯ', 256, 280);
+            ctx.fillText('КНИЖКА', 256, 360);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true
+            });
+            const geometry = new THREE.PlaneGeometry(8, 10);
+            const textMesh = new THREE.Mesh(geometry, material);
+            textMesh.position.z = 0.31;
+            notebook.add(textMesh);
+        }
+
+        // Создание текста на странице
+        function createPageText(text, pageIndex) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+
+            // Фон страницы
+            ctx.fillStyle = '#fffef0';
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            // Линии
+            ctx.strokeStyle = '#e8d9c5';
+            ctx.lineWidth = 2;
+            for (let i = 50; i < 1024; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(50, i);
+                ctx.lineTo(974, i);
+                ctx.stroke();
+            }
+
+            // Текст
+            ctx.fillStyle = '#000';
+            ctx.font = '24px Arial';
+
+            const lines = text.split('\n');
+            let y = 70;
+            lines.forEach((line, index) => {
+                if (y > 950) return;
+                const words = line.split(' ');
+                let currentLine = '';
+
+                words.forEach(word => {
+                    const testLine = currentLine + word + ' ';
+                    const metrics = ctx.measureText(testLine);
+
+                    if (metrics.width > 900 && currentLine !== '') {
+                        ctx.fillText(currentLine, 70, y);
+                        currentLine = word + ' ';
+                        y += 40;
+                    } else {
+                        currentLine = testLine;
+                    }
+                });
+
+                ctx.fillText(currentLine, 70, y);
+                y += 40;
+            });
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true
+            });
+            const geometry = new THREE.PlaneGeometry(11, 15);
+            const textMesh = new THREE.Mesh(geometry, material);
+            textMesh.position.z = 0.03;
+
+            return textMesh;
+        }
+
+        // Обновление отображения заметок на страницах
+        function updateNotebookPages() {
+            pages.forEach(page => {
+                // Удаляем старый текст
+                const oldText = page.children.find(child => child.userData.isText);
+                if (oldText) page.remove(oldText);
+            });
+
+            notes.slice(0, 5).forEach((note, index) => {
+                const fullText = `${note.title}\n\n${note.content}`;
+                const textMesh = createPageText(fullText, index);
+                textMesh.userData.isText = true;
+                pages[index].add(textMesh);
+            });
+        }
+
+        // Управление мышью
+        function onMouseMove(event) {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            targetRotationY = mouseX * 0.5;
+            targetRotationX = mouseY * 0.3;
+        }
+
+        function onMouseWheel(event) {
+            camera.position.z += event.deltaY * 0.01;
+            camera.position.z = Math.max(15, Math.min(40, camera.position.z));
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Анимация
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Плавное вращение блокнота
+            notebook.rotation.y += (targetRotationY - notebook.rotation.y) * 0.05;
+            notebook.rotation.x += (targetRotationX - notebook.rotation.x) * 0.05;
+
+            // Легкое покачивание
+            notebook.position.y = Math.sin(Date.now() * 0.001) * 0.2;
+
+            // Анимация страниц
+            pages.forEach((page, index) => {
+                const targetZ = 0.3 + index * 0.1;
+                page.children[0].position.z += (targetZ - page.children[0].position.z) * 0.1;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // Управление заметками
+        function loadNotes() {
+            const saved = localStorage.getItem('notebook3d_notes');
+            if (saved) {
+                notes = JSON.parse(saved);
+            }
+            renderNotesList();
+            updateStats();
+            updateNotebookPages();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('notebook3d_notes', JSON.stringify(notes));
+        }
+
+        function showEditor(noteId = null) {
+            document.getElementById('listView').style.display = 'none';
+            document.getElementById('editorView').classList.add('active');
+
+            if (noteId) {
+                const note = notes.find(n => n.id === noteId);
+                currentNoteId = noteId;
+                document.getElementById('noteTitle').value = note.title;
+                document.getElementById('noteContent').value = note.content;
+                document.getElementById('deleteBtn').style.display = 'block';
+            } else {
+                currentNoteId = null;
+                document.getElementById('noteTitle').value = '';
+                document.getElementById('noteContent').value = '';
+                document.getElementById('deleteBtn').style.display = 'none';
+            }
+        }
+
+        function cancelEdit() {
+            document.getElementById('listView').style.display = 'block';
+            document.getElementById('editorView').classList.remove('active');
+        }
+
+        function saveNote() {
+            const title = document.getElementById('noteTitle').value.trim();
+            const content = document.getElementById('noteContent').value.trim();
+
+            if (!title && !content) {
+                alert('⚠️ Заметка не может быть пустой!');
+                return;
+            }
+
+            const note = {
+                id: currentNoteId || Date.now(),
+                title: title || 'Без названия',
+                content: content,
+                date: new Date().toLocaleString('ru-RU')
+            };
+
+            if (currentNoteId) {
+                const index = notes.findIndex(n => n.id === currentNoteId);
+                notes[index] = note;
+            } else {
+                notes.unshift(note);
+            }
+
+            saveToStorage();
+            cancelEdit();
+            renderNotesList();
+            updateStats();
+            updateNotebookPages();
+        }
+
+        function deleteCurrentNote() {
+            if (!confirm('🗑️ Удалить эту заметку?')) return;
+
+            notes = notes.filter(n => n.id !== currentNoteId);
+            saveToStorage();
+            cancelEdit();
+            renderNotesList();
+            updateStats();
+            updateNotebookPages();
+        }
+
+        function renderNotesList() {
+            const container = document.getElementById('notesList');
+
+            if (notes.length === 0) {
+                container.innerHTML = `
+                    <div style="color: rgba(255,255,255,0.5); text-align: center; padding: 20px;">
+                        Заметок пока нет
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = notes.map(note => `
+                <div class="note-item" onclick="showEditor(${note.id})">
+                    <div class="note-item-title">${note.title}</div>
+                    <div class="note-item-preview">${note.content.substring(0, 50)}...</div>
+                </div>
+            `).join('');
+        }
+
+        function updateStats() {
+            document.getElementById('noteCount').textContent = notes.length;
+
+            const totalWords = notes.reduce((sum, note) => {
+                return sum + note.content.split(/\s+/).filter(w => w).length;
+            }, 0);
+            document.getElementById('wordCount').textContent = totalWords;
+        }
+
+        function exportNotes() {
+            if (notes.length === 0) {
+                alert('📭 Нет заметок для экспорта!');
+                return;
+            }
+
+            let text = '📕 3D ЗАПИСНАЯ КНИЖКА\n';
+            text += '═══════════════════════════════\n\n';
+
+            notes.forEach((note, index) => {
+                text += `${index + 1}. ${note.title}\n`;
+                text += `Дата: ${note.date}\n`;
+                text += `───────────────────────────────\n`;
+                text += `${note.content}\n`;
+                text += `═══════════════════════════════\n\n`;
+            });
+
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `3D_Блокнот_${new Date().toLocaleDateString('ru-RU')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            alert('✅ Заметки экспортированы!');
+        }
+
+        // Переключение панели на мобильных
+        function togglePanel() {
+            const panel = document.getElementById('controlPanel');
+            panel.classList.toggle('hidden');
+        }
+
+        // Инициализация
+        initThree();
+        loadNotes();
+        animate();
+    </script>
+</body>
+</html>
