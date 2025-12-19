@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>📓 Блокнот 2.5D</title>
+    <title>📓 Блокнот 2.5D + SQLite</title>
     <style>
         * {
             margin: 0;
@@ -59,14 +59,25 @@
 
         .panel-title {
             color: #fff;
-            font-size: 24px;
+            font-size: 22px;
             font-weight: bold;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             text-align: center;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+        }
+
+        .db-badge {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 11px;
+            text-align: center;
+            margin-bottom: 15px;
+            border: 1px solid rgba(102, 126, 234, 0.3);
         }
 
         .btn {
@@ -99,6 +110,11 @@
 
         .btn-secondary {
             background: #666;
+            color: white;
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #0575e6 0%, #021b79 100%);
             color: white;
         }
 
@@ -275,6 +291,10 @@
             display: none;
         }
 
+        .file-input {
+            display: none;
+        }
+
         @media (max-width: 768px) {
             .control-panel {
                 top: 0;
@@ -318,9 +338,28 @@
             background: rgba(102, 126, 234, 0.5);
             border-radius: 10px;
         }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            z-index: 1000;
+            display: none;
+        }
+
+        .loading.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
+    <div class="loading" id="loading">⏳ Загрузка SQLite...</div>
+
     <div id="app-container">
         <canvas id="notebook-canvas"></canvas>
 
@@ -335,6 +374,7 @@
 
         <div class="control-panel" id="controlPanel">
             <div class="panel-title">📓 Блокнот 2.5D</div>
+            <div class="db-badge">🗄️ База данных: SQLite</div>
 
             <div id="listView">
                 <div class="stats">
@@ -356,7 +396,10 @@
                     </div>
                 </div>
 
-                <button class="btn btn-success" id="exportBtn">💾 Экспорт</button>
+                <button class="btn btn-success" id="exportBtn">💾 Экспорт TXT</button>
+                <button class="btn btn-info" id="exportDbBtn">💿 Скачать БД (.db)</button>
+                <button class="btn btn-secondary" id="importDbBtn">📂 Загрузить БД (.db)</button>
+                <input type="file" id="dbFileInput" class="file-input" accept=".db,.sqlite">
             </div>
 
             <div id="editorView" class="editor-panel">
@@ -377,8 +420,13 @@
         </div>
     </div>
 
+    <!-- Загрузка sql.js из CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
     <script>
-        // Основные переменные
+        // Глобальные переменные
+        let db = null;
+        let SQL = null;
         const canvas = document.getElementById('notebook-canvas');
         const ctx = canvas.getContext('2d');
         let notes = [];
@@ -395,6 +443,177 @@
         let isDragging = false;
         let lastX = 0;
         let lastY = 0;
+
+        // Инициализация SQLite
+        async function initDatabase() {
+            document.getElementById('loading').classList.add('active');
+
+            try {
+                // Инициализация sql.js
+                SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
+
+                // Проверяем, есть ли сохраненная база в localStorage
+                const savedDb = localStorage.getItem('notebook_sqlite_db');
+
+                if (savedDb) {
+                    // Восстанавливаем базу из localStorage
+                    const uint8Array = new Uint8Array(JSON.parse(savedDb));
+                    db = new SQL.Database(uint8Array);
+                    console.log('✅ База данных восстановлена из localStorage');
+                } else {
+                    // Создаем новую базу
+                    db = new SQL.Database();
+
+                    // Создаем таблицу для заметок
+                    db.run(`
+                        CREATE TABLE IF NOT EXISTS notes (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            title TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            date TEXT NOT NULL,
+                            created_at INTEGER NOT NULL
+                        )
+                    `);
+
+                    console.log('✅ Создана новая база данных');
+                    saveDatabase();
+                }
+
+                document.getElementById('loading').classList.remove('active');
+                loadNotes();
+
+            } catch (error) {
+                console.error('❌ Ошибка инициализации БД:', error);
+                document.getElementById('loading').classList.remove('active');
+                alert('Ошибка загрузки SQLite! Проверьте подключение к интернету.');
+            }
+        }
+
+        // Сохранение базы данных в localStorage
+        function saveDatabase() {
+            try {
+                const data = db.export();
+                const buffer = Array.from(data);
+                localStorage.setItem('notebook_sqlite_db', JSON.stringify(buffer));
+                console.log('💾 База данных сохранена');
+            } catch (error) {
+                console.error('❌ Ошибка сохранения БД:', error);
+            }
+        }
+
+        // Загрузка заметок из БД
+        function loadNotes() {
+            try {
+                const result = db.exec('SELECT * FROM notes ORDER BY created_at DESC');
+
+                if (result.length > 0) {
+                    const columns = result[0].columns;
+                    const values = result[0].values;
+
+                    notes = values.map(row => {
+                        const note = {};
+                        columns.forEach((col, i) => {
+                            note[col] = row[i];
+                        });
+                        return note;
+                    });
+                } else {
+                    notes = [];
+                }
+
+                updateUI();
+            } catch (error) {
+                console.error('❌ Ошибка загрузки заметок:', error);
+                notes = [];
+                updateUI();
+            }
+        }
+
+        // Сохранение заметки в БД
+        function saveNoteToDB(title, content) {
+            try {
+                const date = new Date().toLocaleString('ru-RU');
+                const timestamp = Date.now();
+
+                if (currentNoteId) {
+                    // Обновление существующей заметки
+                    db.run(
+                        'UPDATE notes SET title = ?, content = ?, date = ? WHERE id = ?',
+                        [title, content, date, currentNoteId]
+                    );
+                } else {
+                    // Создание новой заметки
+                    db.run(
+                        'INSERT INTO notes (title, content, date, created_at) VALUES (?, ?, ?, ?)',
+                        [title, content, date, timestamp]
+                    );
+                }
+
+                saveDatabase();
+                loadNotes();
+                return true;
+            } catch (error) {
+                console.error('❌ Ошибка сохранения заметки:', error);
+                alert('Ошибка сохранения заметки!');
+                return false;
+            }
+        }
+
+        // Удаление заметки из БД
+        function deleteNoteFromDB(id) {
+            try {
+                db.run('DELETE FROM notes WHERE id = ?', [id]);
+                saveDatabase();
+                loadNotes();
+                return true;
+            } catch (error) {
+                console.error('❌ Ошибка удаления заметки:', error);
+                alert('Ошибка удаления заметки!');
+                return false;
+            }
+        }
+
+        // Экспорт базы данных в файл
+        function exportDatabase() {
+            try {
+                const data = db.export();
+                const blob = new Blob([data], { type: 'application/x-sqlite3' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `notebook_${new Date().toISOString().slice(0,10)}.db`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                alert('✅ База данных экспортирована!');
+            } catch (error) {
+                console.error('❌ Ошибка экспорта БД:', error);
+                alert('Ошибка экспорта базы данных!');
+            }
+        }
+
+        // Импорт базы данных из файла
+        function importDatabase(file) {
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const uint8Array = new Uint8Array(e.target.result);
+                    db = new SQL.Database(uint8Array);
+                    saveDatabase();
+                    loadNotes();
+                    alert('✅ База данных импортирована!');
+                } catch (error) {
+                    console.error('❌ Ошибка импорта БД:', error);
+                    alert('Ошибка импорта! Файл поврежден или неверный формат.');
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
 
         // Инициализация canvas
         function initCanvas() {
@@ -413,7 +632,6 @@
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
 
-            // Плавная анимация
             notebookRotation += (targetRotation - notebookRotation) * 0.1;
             notebookTilt += (targetTilt - notebookTilt) * 0.1;
 
@@ -444,14 +662,14 @@
 
             // Название
             ctx.fillStyle = '#f4e4c1';
-            ctx.font = 'bold 32px Arial';
+            ctx.font = 'bold 28px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.shadowBlur = 5;
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.fillText('МОЙ БЛОКНОТ', 0, -100);
-            ctx.font = 'bold 24px Arial';
-            ctx.fillText('2.5D', 0, -60);
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('2.5D + SQLite', 0, -70);
             ctx.shadowBlur = 0;
 
             // Страницы
@@ -593,29 +811,7 @@
 
         canvas.addEventListener('touchend', () => isDragging = false);
 
-        // Работа с заметками
-        function loadNotes() {
-            try {
-                const saved = localStorage.getItem('notebook25d_notes');
-                if (saved) {
-                    notes = JSON.parse(saved);
-                }
-            } catch (e) {
-                console.error('Ошибка загрузки:', e);
-                notes = [];
-            }
-            updateUI();
-        }
-
-        function saveNotes() {
-            try {
-                localStorage.setItem('notebook25d_notes', JSON.stringify(notes));
-            } catch (e) {
-                console.error('Ошибка сохранения:', e);
-                alert('❌ Ошибка сохранения!');
-            }
-        }
-
+        // UI функции
         function updateUI() {
             renderNotesList();
             updateStats();
@@ -711,37 +907,21 @@
                 return;
             }
 
-            const note = {
-                id: currentNoteId || Date.now(),
-                title: title || 'Без названия',
-                content: content,
-                date: new Date().toLocaleString('ru-RU')
-            };
-
-            if (currentNoteId) {
-                const index = notes.findIndex(n => n.id === currentNoteId);
-                notes[index] = note;
-            } else {
-                notes.unshift(note);
+            if (saveNoteToDB(title || 'Без названия', content)) {
+                hideEditor();
                 currentPage = 0;
             }
-
-            saveNotes();
-            hideEditor();
-            updateUI();
         }
 
         function deleteNote() {
             if (!confirm('🗑️ Удалить эту заметку?')) return;
 
-            notes = notes.filter(n => n.id !== currentNoteId);
-            if (currentPage >= notes.length && currentPage > 0) {
-                currentPage--;
+            if (deleteNoteFromDB(currentNoteId)) {
+                if (currentPage >= notes.length && currentPage > 0) {
+                    currentPage--;
+                }
+                hideEditor();
             }
-
-            saveNotes();
-            hideEditor();
-            updateUI();
         }
 
         function exportNotes() {
@@ -750,7 +930,7 @@
                 return;
             }
 
-            let text = '📓 БЛОКНОТ 2.5D\n';
+            let text = '📓 БЛОКНОТ 2.5D + SQLite\n';
             text += '═══════════════════════════════\n\n';
 
             notes.forEach((note, index) => {
@@ -771,7 +951,7 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            alert('✅ Заметки экспортированы!');
+            alert('✅ Заметки экспортированы в TXT!');
         }
 
         // События кнопок
@@ -780,6 +960,18 @@
         document.getElementById('deleteBtn').addEventListener('click', deleteNote);
         document.getElementById('cancelBtn').addEventListener('click', hideEditor);
         document.getElementById('exportBtn').addEventListener('click', exportNotes);
+        document.getElementById('exportDbBtn').addEventListener('click', exportDatabase);
+
+        document.getElementById('importDbBtn').addEventListener('click', () => {
+            document.getElementById('dbFileInput').click();
+        });
+
+        document.getElementById('dbFileInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                importDatabase(file);
+            }
+        });
 
         document.getElementById('toggleBtn').addEventListener('click', () => {
             const panel = document.getElementById('controlPanel');
@@ -808,9 +1000,10 @@
             requestAnimationFrame(animate);
         }
 
-        // Запуск
-        loadNotes();
-        animate();
+        // Запуск приложения
+        initDatabase().then(() => {
+            animate();
+        });
     </script>
 </body>
 </html>
