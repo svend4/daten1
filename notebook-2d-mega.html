@@ -914,6 +914,21 @@
                     <button class="btn btn-success" id="fromTemplateBtn">
                         📋 Из шаблона
                     </button>
+                    <button class="btn btn-secondary" id="bulkSelectBtn">
+                        ☑️ Выбрать
+                    </button>
+                </div>
+            </div>
+
+            <!-- Панель массовых операций -->
+            <div id="bulkActionsPanel" style="display: none; background: #667eea; color: white; padding: 15px; border-bottom: 1px solid #ddd;">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <span id="selectedCount">Выбрано: 0</span>
+                    <button class="btn btn-danger" id="bulkDeleteBtn">🗑️ Удалить</button>
+                    <button class="btn btn-secondary" id="bulkMoveBtn">📁 Переместить</button>
+                    <button class="btn btn-secondary" id="bulkTagBtn">🏷️ Добавить тег</button>
+                    <button class="btn btn-secondary" id="bulkFavoriteBtn">⭐ В избранное</button>
+                    <button class="btn btn-secondary" id="bulkCancelBtn">❌ Отменить</button>
                 </div>
             </div>
 
@@ -1120,6 +1135,8 @@
         let currentFolderId = null;
         let currentSort = 'created_desc';
         let currentColor = 'white';
+        let bulkSelectMode = false;
+        let selectedNotes = new Set();
 
         // Инициализация
         async function initApp() {
@@ -1515,8 +1532,9 @@
                 if (note.password) {
                     contentPreview = '🔒 Защищено паролем';
                 } else {
-                    // Применяем wiki-ссылки, затем markdown, затем удаляем HTML
-                    const withWikiLinks = processWikiLinks(note.content);
+                    // Применяем TOC, wiki-ссылки, затем markdown, затем удаляем HTML
+                    const withTOC = generateTOC(note.content);
+                    const withWikiLinks = processWikiLinks(withTOC);
                     contentPreview = marked.parse(withWikiLinks).replace(/<[^>]*>/g, '').substring(0, 150);
                 }
 
@@ -1980,6 +1998,49 @@
             return content.replace(/\[\[([^\]]+)\]\]/g, (match, title) => {
                 return `<a href="#" onclick="openNoteByTitle('${title.replace(/'/g, "\\'")}'); return false;" style="color: #667eea; text-decoration: underline;">${title}</a>`;
             });
+        }
+
+        // 📑 ОГЛАВЛЕНИЕ (TOC)
+        function generateTOC(content) {
+            // Проверить наличие маркера [TOC]
+            if (!content.match(/\[TOC\]/i)) return content;
+
+            // Найти все заголовки
+            const headings = [];
+            const lines = content.split('\n');
+
+            lines.forEach((line, index) => {
+                const match = line.match(/^(#{1,6})\s+(.+)$/);
+                if (match) {
+                    const level = match[1].length;
+                    const text = match[2].trim();
+                    const id = 'heading-' + text.toLowerCase().replace(/[^a-zа-я0-9]/g, '-');
+                    headings.push({ level, text, id, line: index });
+                }
+            });
+
+            if (headings.length === 0) {
+                return content.replace(/\[TOC\]/gi, '<p><em>📑 Нет заголовков для оглавления</em></p>');
+            }
+
+            // Создать HTML оглавления
+            let tocHtml = '<div class="toc-container" style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 5px;">';
+            tocHtml += '<h3 style="margin: 0 0 10px 0; color: #667eea;">📑 Оглавление</h3>';
+            tocHtml += '<ul style="margin: 0; padding-left: 20px; list-style: none;">';
+
+            headings.forEach(h => {
+                const indent = (h.level - 1) * 15;
+                tocHtml += `<li style="margin-left: ${indent}px; margin-bottom: 5px;">
+                    <a href="#${h.id}" style="color: #495057; text-decoration: none; hover: {text-decoration: underline;}">
+                        ${'•'.repeat(h.level)} ${h.text}
+                    </a>
+                </li>`;
+            });
+
+            tocHtml += '</ul></div>';
+
+            // Заменить [TOC] на оглавление
+            return content.replace(/\[TOC\]/gi, tocHtml);
         }
 
         function openNoteByTitle(title) {
