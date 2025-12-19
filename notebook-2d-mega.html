@@ -73,6 +73,28 @@
             100% { transform: rotate(360deg); }
         }
 
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
         .app-container {
             width: 100%;
             max-width: 1400px;
@@ -919,7 +941,11 @@
                 <div class="sidebar-item" data-view="dashboard">
                     📊 Дашборд
                 </div>
-                <div class="sidebar-item active" data-filter="all">
+                <div class="sidebar-item active"
+                     data-filter="all"
+                     ondragover="event.preventDefault(); event.currentTarget.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'; event.currentTarget.style.border = '2px dashed #fff';"
+                     ondragleave="event.currentTarget.style.background = ''; event.currentTarget.style.border = '';"
+                     ondrop="handleAllNotesDrop(event)">
                     📝 Все заметки
                     <span class="sidebar-item-count" id="countAll">0</span>
                 </div>
@@ -954,11 +980,17 @@
                 <div class="sidebar-item" id="exportAllBtn">
                     💾 Экспорт всех
                 </div>
+                <div class="sidebar-item" id="importBtn">
+                    📥 Импорт
+                </div>
                 <div class="sidebar-item" id="settingsBtn">
                     ⚙️ Настройки
                 </div>
                 <div class="sidebar-item" id="switchUserBtn">
                     👤 Сменить профиль
+                </div>
+                <div class="sidebar-item" id="notificationsBtn">
+                    🔔 Уведомления: <span id="notificationStatus">⏸️ Не настроены</span>
                 </div>
             </div>
         </aside>
@@ -966,8 +998,13 @@
         <!-- Main content -->
         <main class="main-content">
             <div class="top-bar">
-                <input type="text" class="search-bar" id="searchInput" placeholder="🔍 Поиск заметок...">
-                
+                <div style="display: flex; gap: 10px; flex: 1;">
+                    <input type="text" class="search-bar" id="searchInput" placeholder="🔍 Поиск заметок..." style="flex: 1;">
+                    <button class="btn btn-secondary" id="advancedSearchBtn" title="Расширенный поиск">
+                        🔎 Фильтры
+                    </button>
+                </div>
+
                 <div class="toolbar">
                     <select class="form-select" id="sortSelect" style="width: auto;">
                         <option value="created_desc">Новые первым</option>
@@ -1081,9 +1118,135 @@
                 </div>
             </div>
 
+            <!-- Достижения -->
+            <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px;">🏆 Достижения</h3>
+                <div id="achievementsList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;"></div>
+            </div>
+
+            <!-- Тренды -->
+            <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px;">📉 Тренды категорий и тегов</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h4 style="font-size: 14px; color: #666; margin-bottom: 10px;">🏷️ Топ категории:</h4>
+                        <div id="topCategories"></div>
+                    </div>
+                    <div>
+                        <h4 style="font-size: 14px; color: #666; margin-bottom: 10px;">🏷️ Топ теги:</h4>
+                        <div id="topTags"></div>
+                    </div>
+                </div>
+            </div>
+
             <div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
                 <h3 style="margin-bottom: 15px;">☁️ Облако тегов</h3>
                 <div id="tagCloud" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Search Modal -->
+    <div class="modal" id="advancedSearchModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">🔎 Расширенный поиск</h2>
+                <button class="close-btn" id="closeAdvancedSearch">×</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div class="form-group">
+                    <label class="form-label">📅 Период создания:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="date" class="form-input" id="filterDateFrom" placeholder="От">
+                        <input type="date" class="form-input" id="filterDateTo" placeholder="До">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">🏷️ Категория:</label>
+                    <select class="form-select" id="filterCategory">
+                        <option value="">Все категории</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">🎨 Цвет:</label>
+                    <select class="form-select" id="filterColor">
+                        <option value="">Все цвета</option>
+                        <option value="white">⚪ Белый</option>
+                        <option value="yellow">🟡 Желтый</option>
+                        <option value="pink">🟣 Розовый</option>
+                        <option value="blue">🔵 Синий</option>
+                        <option value="green">🟢 Зеленый</option>
+                        <option value="purple">🟣 Фиолетовый</option>
+                        <option value="orange">🟠 Оранжевый</option>
+                        <option value="red">🔴 Красный</option>
+                        <option value="teal">🔷 Бирюзовый</option>
+                        <option value="indigo">🟦 Индиго</option>
+                        <option value="lime">🟩 Лайм</option>
+                        <option value="gray">⚫ Серый</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">🏷️ Теги (через запятую):</label>
+                    <input type="text" class="form-input" id="filterTags" placeholder="тег1, тег2, тег3">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">📋 Дополнительные фильтры:</label>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="filterOnlyFavorites">
+                        <span>⭐ Только избранные</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="filterOnlyPinned">
+                        <span>📌 Только закрепленные</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="filterWithReminders">
+                        <span>📅 С напоминаниями</span>
+                    </label>
+                </div>
+
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" id="clearFiltersBtn">🗑️ Сбросить</button>
+                    <button type="button" class="btn btn-primary" id="applyFiltersBtn">✅ Применить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="modal" id="importModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">📥 Импорт заметок</h2>
+                <button class="close-btn" id="closeImport">×</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 20px; padding: 20px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; cursor: pointer;" onclick="importFromTextFiles()">
+                    <div style="font-size: 48px; margin-bottom: 10px;">📄</div>
+                    <div style="font-size: 18px; font-weight: bold; margin-bottom: 5px;">Текстовые файлы</div>
+                    <div style="font-size: 14px; opacity: 0.9;">Импорт из .txt, .md, .markdown файлов</div>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; cursor: pointer;" onclick="importFromSQLite()">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🗄️</div>
+                    <div style="font-size: 18px; font-weight: bold; margin-bottom: 5px;">База данных SQLite</div>
+                    <div style="font-size: 14px; opacity: 0.9;">Импорт из существующей SQLite БД</div>
+                </div>
+
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                    <div style="font-weight: bold; margin-bottom: 5px;">ℹ️ Информация:</div>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #666;">
+                        <li>Текстовые файлы: каждый файл = отдельная заметка</li>
+                        <li>SQLite БД: импорт всех заметок из таблицы notes</li>
+                        <li>Все импортированные заметки сохраняются в вашем профиле</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -1247,6 +1410,7 @@
                 updateSidebarCounts();
                 setupEventListeners();
                 applySavedFontSize(); // Применить сохраненный размер шрифта
+                updateNotificationStatus(); // Обновить статус уведомлений
                 checkReminders();
             } catch (error) {
                 console.error('Error:', error);
@@ -1548,7 +1712,12 @@
                 return folders.map(folder => {
                     const count = getFolderNoteCount(folder.id);
                     return `
-                        <div class="sidebar-item" data-folder="${folder.id}" style="padding-left: ${10 + indent * 15}px;">
+                        <div class="sidebar-item folder-item"
+                             data-folder="${folder.id}"
+                             style="padding-left: ${10 + indent * 15}px;"
+                             ondragover="handleFolderDragOver(event, ${folder.id})"
+                             ondragleave="handleFolderDragLeave(event)"
+                             ondrop="handleFolderDrop(event, ${folder.id})">
                             ${'└─'.repeat(Math.min(indent, 1))}${indent > 0 ? ' ' : ''}📁 ${folder.name}
                             <span class="sidebar-item-count">${count}</span>
                         </div>
@@ -1762,7 +1931,11 @@
                     <div class="note-card ${note.is_pinned ? 'pinned' : ''}"
                          data-color="${note.color}"
                          data-id="${note.id}"
-                         data-password="${note.password ? 'true' : 'false'}">
+                         data-folder-id="${note.folder_id || ''}"
+                         data-password="${note.password ? 'true' : 'false'}"
+                         draggable="${!note.is_deleted && !bulkSelectMode}"
+                         ondragstart="handleNoteDragStart(event)"
+                         ondragend="handleNoteDragEnd(event)">
                         ${bulkSelectMode && !note.is_deleted ?
                             `<div style="padding: 10px 15px; border-bottom: 1px solid #eee; background: #f8f9fa;">
                                 <label style="display: flex; align-items: center; cursor: pointer;">
@@ -2002,14 +2175,7 @@
                 const now = Date.now();
                 result[0].values.forEach(([id, title, reminderDate]) => {
                     if (reminderDate <= now && reminderDate > now - 60000) { // В течение последней минуты
-                        if (Notification.permission === 'granted') {
-                            new Notification('Напоминание: ' + title, {
-                                body: 'Проверьте вашу заметку',
-                                icon: '📔'
-                            });
-                        } else {
-                            alert('📅 Напоминание: ' + title);
-                        }
+                        showNotification(id, title);
                     }
                 });
             }
@@ -2018,9 +2184,235 @@
             setTimeout(checkReminders, 30000);
         }
 
-        // Запросить разрешение на уведомления
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
+        // 🔔 Улучшенная функция показа уведомлений
+        function showNotification(noteId, noteTitle) {
+            if (Notification.permission === 'granted') {
+                const notification = new Notification('📔 Напоминание', {
+                    body: noteTitle,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">📔</text></svg>',
+                    badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">📔</text></svg>',
+                    tag: 'note-reminder-' + noteId,
+                    requireInteraction: true,
+                    vibrate: [200, 100, 200]
+                });
+
+                // Клик по уведомлению → открыть заметку
+                notification.onclick = function() {
+                    window.focus();
+                    editNote(noteId);
+                    notification.close();
+                };
+            } else if (Notification.permission === 'default') {
+                // Запросить разрешение
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        showNotification(noteId, noteTitle);
+                    } else {
+                        alert('📅 Напоминание: ' + noteTitle);
+                    }
+                });
+            } else {
+                // Разрешение отклонено - показать alert
+                alert('📅 Напоминание: ' + noteTitle);
+            }
+        }
+
+        // Запросить разрешение на уведомления при первом запуске
+        function requestNotificationPermission() {
+            if ('Notification' in window) {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        updateNotificationStatus();
+                        if (permission === 'granted') {
+                            alert('✅ Уведомления включены! Вы будете получать напоминания о заметках.');
+                        }
+                    });
+                } else if (Notification.permission === 'granted') {
+                    alert('✅ Уведомления уже включены!');
+                } else {
+                    alert('❌ Уведомления заблокированы. Разрешите уведомления в настройках браузера.');
+                }
+            } else {
+                alert('❌ Ваш браузер не поддерживает уведомления.');
+            }
+        }
+
+        // Обновить статус уведомлений в UI
+        function updateNotificationStatus() {
+            const statusElement = document.getElementById('notificationStatus');
+            if (!statusElement) return;
+
+            if (!('Notification' in window)) {
+                statusElement.innerHTML = '❌ Не поддерживается';
+                statusElement.style.color = '#999';
+            } else if (Notification.permission === 'granted') {
+                statusElement.innerHTML = '✅ Включены';
+                statusElement.style.color = '#4caf50';
+            } else if (Notification.permission === 'denied') {
+                statusElement.innerHTML = '❌ Заблокированы';
+                statusElement.style.color = '#f44336';
+            } else {
+                statusElement.innerHTML = '⏸️ Не настроены';
+                statusElement.style.color = '#ff9800';
+            }
+        }
+
+        // 🔎 РАСШИРЕННЫЙ ПОИСК
+        let advancedFilters = {};
+
+        function openAdvancedSearch() {
+            // Заполнить список категорий
+            populateCategoriesFilter();
+            document.getElementById('advancedSearchModal').classList.add('active');
+        }
+
+        function populateCategoriesFilter() {
+            const result = db.exec('SELECT DISTINCT category FROM notes WHERE user_id = ? AND is_deleted = 0 AND category IS NOT NULL AND category != ""',
+                [currentUserId]);
+
+            const select = document.getElementById('filterCategory');
+            let options = '<option value="">Все категории</option>';
+
+            if (result.length > 0) {
+                result[0].values.forEach(([category]) => {
+                    options += `<option value="${category}">${category}</option>`;
+                });
+            }
+
+            select.innerHTML = options;
+        }
+
+        function applyAdvancedFilters() {
+            advancedFilters = {
+                dateFrom: document.getElementById('filterDateFrom').value,
+                dateTo: document.getElementById('filterDateTo').value,
+                category: document.getElementById('filterCategory').value,
+                color: document.getElementById('filterColor').value,
+                tags: document.getElementById('filterTags').value,
+                onlyFavorites: document.getElementById('filterOnlyFavorites').checked,
+                onlyPinned: document.getElementById('filterOnlyPinned').checked,
+                withReminders: document.getElementById('filterWithReminders').checked
+            };
+
+            document.getElementById('advancedSearchModal').classList.remove('active');
+            loadNotesWithFilters();
+        }
+
+        function loadNotesWithFilters() {
+            let query = 'SELECT * FROM notes WHERE user_id = ? AND is_deleted = 0';
+            let params = [currentUserId];
+
+            // Применяем фильтры по дате
+            if (advancedFilters.dateFrom) {
+                const fromDate = new Date(advancedFilters.dateFrom).getTime();
+                query += ' AND created_at >= ?';
+                params.push(fromDate);
+            }
+
+            if (advancedFilters.dateTo) {
+                const toDate = new Date(advancedFilters.dateTo).getTime() + 86400000; // +1 день
+                query += ' AND created_at <= ?';
+                params.push(toDate);
+            }
+
+            // Фильтр по категории
+            if (advancedFilters.category) {
+                query += ' AND category = ?';
+                params.push(advancedFilters.category);
+            }
+
+            // Фильтр по цвету
+            if (advancedFilters.color) {
+                query += ' AND color = ?';
+                params.push(advancedFilters.color);
+            }
+
+            // Фильтр по тегам
+            if (advancedFilters.tags) {
+                const tagsArray = advancedFilters.tags.split(',').map(t => t.trim());
+                tagsArray.forEach(tag => {
+                    query += ' AND tags LIKE ?';
+                    params.push('%' + tag + '%');
+                });
+            }
+
+            // Фильтр "Только избранные"
+            if (advancedFilters.onlyFavorites) {
+                query += ' AND is_favorite = 1';
+            }
+
+            // Фильтр "Только закрепленные"
+            if (advancedFilters.onlyPinned) {
+                query += ' AND is_pinned = 1';
+            }
+
+            // Фильтр "С напоминаниями"
+            if (advancedFilters.withReminders) {
+                query += ' AND reminder_date IS NOT NULL';
+            }
+
+            // Сортировка
+            if (currentSort === 'created_desc') query += ' ORDER BY created_at DESC';
+            else if (currentSort === 'created_asc') query += ' ORDER BY created_at ASC';
+            else if (currentSort === 'title_asc') query += ' ORDER BY title ASC';
+            else if (currentSort === 'title_desc') query += ' ORDER BY title DESC';
+            else if (currentSort === 'updated_desc') query += ' ORDER BY updated_at DESC';
+
+            const result = db.exec(query, params);
+
+            if (result.length > 0) {
+                const notes = result[0].values.map(row => ({
+                    id: row[0],
+                    user_id: row[1],
+                    folder_id: row[2],
+                    title: row[3],
+                    content: row[4],
+                    category: row[5],
+                    tags: row[6],
+                    color: row[7],
+                    is_favorite: row[8],
+                    is_pinned: row[9],
+                    is_archived: row[10],
+                    is_deleted: row[11],
+                    password: row[12],
+                    reminder_date: row[13],
+                    view_count: row[14],
+                    created_at: row[15],
+                    updated_at: row[16]
+                }));
+
+                renderNotes(notes);
+            } else {
+                renderNotes([]);
+            }
+
+            // Показать индикатор активных фильтров
+            const filtersCount = Object.values(advancedFilters).filter(v => v && v !== '').length;
+            const advSearchBtn = document.getElementById('advancedSearchBtn');
+            if (filtersCount > 0) {
+                advSearchBtn.textContent = `🔎 Фильтры (${filtersCount})`;
+                advSearchBtn.style.background = '#667eea';
+                advSearchBtn.style.color = 'white';
+            } else {
+                advSearchBtn.textContent = '🔎 Фильтры';
+                advSearchBtn.style.background = '';
+                advSearchBtn.style.color = '';
+            }
+        }
+
+        function clearAdvancedFilters() {
+            advancedFilters = {};
+            document.getElementById('filterDateFrom').value = '';
+            document.getElementById('filterDateTo').value = '';
+            document.getElementById('filterCategory').value = '';
+            document.getElementById('filterColor').value = '';
+            document.getElementById('filterTags').value = '';
+            document.getElementById('filterOnlyFavorites').checked = false;
+            document.getElementById('filterOnlyPinned').checked = false;
+            document.getElementById('filterWithReminders').checked = false;
+
+            document.getElementById('advancedSearchModal').classList.remove('active');
+            loadNotes(); // Загрузить все заметки без фильтров
         }
 
         // 📊 ДАШБОРД И СТАТИСТИКА
@@ -2047,6 +2439,8 @@
             renderActivityChart();
             renderCategoriesChart();
             renderTagCloud();
+            renderAchievements();
+            renderTrends();
         }
 
         function getCountThisMonth() {
@@ -2163,6 +2557,119 @@
             document.getElementById('searchInput').dispatchEvent(new Event('input'));
         }
 
+        // 🏆 ДОСТИЖЕНИЯ
+        function renderAchievements() {
+            const stats = {
+                total: getCount('is_deleted = 0'),
+                favorites: getCount('is_deleted = 0 AND is_favorite = 1'),
+                folders: getFolderCount(),
+                withTags: getCount('is_deleted = 0 AND tags IS NOT NULL AND tags != ""'),
+                withCategories: getCount('is_deleted = 0 AND category IS NOT NULL AND category != ""')
+            };
+
+            const achievements = [
+                { icon: '🎯', title: 'Первый шаг', desc: 'Создана первая заметка', unlocked: stats.total >= 1 },
+                { icon: '📝', title: 'Писатель', desc: '10 заметок создано', unlocked: stats.total >= 10 },
+                { icon: '📚', title: 'Библиотекарь', desc: '50 заметок создано', unlocked: stats.total >= 50 },
+                { icon: '🏆', title: 'Мастер заметок', desc: '100 заметок создано', unlocked: stats.total >= 100 },
+                { icon: '💎', title: 'Легенда', desc: '500 заметок создано', unlocked: stats.total >= 500 },
+                { icon: '⭐', title: 'Избранное', desc: '10+ избранных заметок', unlocked: stats.favorites >= 10 },
+                { icon: '📁', title: 'Организатор', desc: 'Создано 5+ папок', unlocked: stats.folders >= 5 },
+                { icon: '🏷️', title: 'Тегер', desc: '20+ заметок с тегами', unlocked: stats.withTags >= 20 },
+                { icon: '🗂️', title: 'Категоризатор', desc: '30+ заметок с категориями', unlocked: stats.withCategories >= 30 }
+            ];
+
+            const list = document.getElementById('achievementsList');
+            list.innerHTML = achievements.map(ach => {
+                const opacity = ach.unlocked ? '1' : '0.3';
+                const background = ach.unlocked ?
+                    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' :
+                    '#e0e0e0';
+                const color = ach.unlocked ? 'white' : '#999';
+
+                return `
+                    <div style="background: ${background}; color: ${color}; padding: 15px; border-radius: 10px; opacity: ${opacity}; transition: all 0.3s;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">${ach.icon}</div>
+                        <div style="font-weight: bold; margin-bottom: 4px;">${ach.title}</div>
+                        <div style="font-size: 12px; opacity: 0.9;">${ach.desc}</div>
+                        ${ach.unlocked ? '<div style="margin-top: 8px; font-size: 12px;">✅ Получено</div>' : '<div style="margin-top: 8px; font-size: 12px;">🔒 Заблокировано</div>'}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 📉 ТРЕНДЫ
+        function renderTrends() {
+            // Топ категории
+            const categoriesResult = db.exec(
+                'SELECT category, COUNT(*) as count FROM notes WHERE user_id = ? AND is_deleted = 0 AND category IS NOT NULL AND category != "" GROUP BY category ORDER BY count DESC LIMIT 5',
+                [currentUserId]
+            );
+
+            const topCategoriesDiv = document.getElementById('topCategories');
+            if (categoriesResult.length > 0 && categoriesResult[0].values.length > 0) {
+                const maxCount = categoriesResult[0].values[0][1];
+                topCategoriesDiv.innerHTML = categoriesResult[0].values.map(([category, count], index) => {
+                    const percent = (count / maxCount) * 100;
+                    const colors = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b'];
+                    const color = colors[index % colors.length];
+
+                    return `
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="font-size: 13px; font-weight: 500;">${category}</span>
+                                <span style="font-size: 13px; color: #666;">${count}</span>
+                            </div>
+                            <div style="background: #f0f0f0; border-radius: 10px; overflow: hidden; height: 8px;">
+                                <div style="background: ${color}; height: 100%; width: ${percent}%; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                topCategoriesDiv.innerHTML = '<p style="color: #999; font-size: 13px;">Нет данных</p>';
+            }
+
+            // Топ теги
+            const result = db.exec('SELECT tags FROM notes WHERE user_id = ? AND is_deleted = 0 AND tags IS NOT NULL AND tags != ""', [currentUserId]);
+            const tagCounts = {};
+
+            if (result.length > 0) {
+                result[0].values.forEach(([tags]) => {
+                    tags.split(',').forEach(tag => {
+                        const t = tag.trim();
+                        if (t) tagCounts[t] = (tagCounts[t] || 0) + 1;
+                    });
+                });
+            }
+
+            const topTagsDiv = document.getElementById('topTags');
+            const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+            if (sortedTags.length > 0) {
+                const maxCount = sortedTags[0][1];
+                topTagsDiv.innerHTML = sortedTags.map(([tag, count], index) => {
+                    const percent = (count / maxCount) * 100;
+                    const colors = ['#f093fb', '#667eea', '#43e97b', '#4facfe', '#764ba2'];
+                    const color = colors[index % colors.length];
+
+                    return `
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="font-size: 13px; font-weight: 500;">#${tag}</span>
+                                <span style="font-size: 13px; color: #666;">${count}</span>
+                            </div>
+                            <div style="background: #f0f0f0; border-radius: 10px; overflow: hidden; height: 8px;">
+                                <div style="background: ${color}; height: 100%; width: ${percent}%; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                topTagsDiv.innerHTML = '<p style="color: #999; font-size: 13px;">Нет данных</p>';
+            }
+        }
+
         // ⌨️ ГОРЯЧИЕ КЛАВИШИ
         document.addEventListener('keydown', (e) => {
             // Ctrl+N - новая заметка
@@ -2191,8 +2698,8 @@
             }
         });
 
-        // 📥 ИМПОРТ MARKDOWN
-        function importMarkdown() {
+        // 📥 ИМПОРТ ИЗ ТЕКСТОВЫХ ФАЙЛОВ
+        function importFromTextFiles() {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = '.md,.markdown,.txt';
@@ -2214,10 +2721,181 @@
 
                 saveDatabase();
                 loadNotes();
+                document.getElementById('importModal').classList.remove('active');
                 alert(`✅ Импортировано заметок: ${imported}`);
             };
 
             input.click();
+        }
+
+        // 📥 ИМПОРТ ИЗ SQLITE БД
+        function importFromSQLite() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.db,.sqlite,.sqlite3';
+
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const importedDB = new SQL.Database(new Uint8Array(arrayBuffer));
+
+                    // Проверяем наличие таблицы notes
+                    const tables = importedDB.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='notes'");
+                    if (tables.length === 0) {
+                        alert('❌ В этой БД не найдена таблица notes');
+                        return;
+                    }
+
+                    // Получаем все заметки из импортируемой БД
+                    const result = importedDB.exec('SELECT title, content, category, tags, color, is_favorite, is_pinned, created_at FROM notes WHERE is_deleted = 0 OR is_deleted IS NULL');
+
+                    if (result.length === 0 || result[0].values.length === 0) {
+                        alert('❌ В БД нет заметок для импорта');
+                        return;
+                    }
+
+                    let imported = 0;
+                    const now = Date.now();
+
+                    result[0].values.forEach(([title, content, category, tags, color, isFavorite, isPinned, createdAt]) => {
+                        db.run(`INSERT INTO notes (user_id, title, content, category, tags, color, is_favorite, is_pinned, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [currentUserId,
+                             title || 'Без названия',
+                             content || '',
+                             category || null,
+                             tags || null,
+                             color || 'white',
+                             isFavorite || 0,
+                             isPinned || 0,
+                             createdAt || now,
+                             now]);
+                        imported++;
+                    });
+
+                    saveDatabase();
+                    loadNotes();
+                    document.getElementById('importModal').classList.remove('active');
+                    alert(`✅ Импортировано заметок из SQLite БД: ${imported}`);
+                } catch (error) {
+                    console.error('Import error:', error);
+                    alert('❌ Ошибка при импорте БД: ' + error.message);
+                }
+            };
+
+            input.click();
+        }
+
+        // Открыть модальное окно импорта
+        function openImport() {
+            document.getElementById('importModal').classList.add('active');
+        }
+
+        // 🎯 DRAG & DROP
+        let draggedNoteId = null;
+
+        function handleNoteDragStart(event) {
+            const noteCard = event.target.closest('.note-card');
+            draggedNoteId = parseInt(noteCard.dataset.id);
+            noteCard.style.opacity = '0.5';
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/html', noteCard.innerHTML);
+        }
+
+        function handleNoteDragEnd(event) {
+            event.target.closest('.note-card').style.opacity = '1';
+            draggedNoteId = null;
+            // Убрать все индикаторы перетаскивания
+            document.querySelectorAll('.folder-item, .sidebar-item').forEach(el => {
+                el.style.background = '';
+                el.style.border = '';
+            });
+        }
+
+        function handleFolderDragOver(event, folderId) {
+            if (!draggedNoteId) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+
+            // Визуальный индикатор
+            const folderElement = event.currentTarget;
+            folderElement.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            folderElement.style.border = '2px dashed #fff';
+        }
+
+        function handleFolderDragLeave(event) {
+            const folderElement = event.currentTarget;
+            folderElement.style.background = '';
+            folderElement.style.border = '';
+        }
+
+        function handleFolderDrop(event, folderId) {
+            event.preventDefault();
+            if (!draggedNoteId) return;
+
+            // Переместить заметку в папку
+            db.run('UPDATE notes SET folder_id = ?, updated_at = ? WHERE id = ?',
+                [folderId, Date.now(), draggedNoteId]);
+
+            saveDatabase();
+            loadNotes();
+            loadFolders();
+
+            // Убрать визуальные индикаторы
+            const folderElement = event.currentTarget;
+            folderElement.style.background = '';
+            folderElement.style.border = '';
+
+            // Показать уведомление
+            const folderResult = db.exec('SELECT name FROM folders WHERE id = ?', [folderId]);
+            const folderName = folderResult.length > 0 ? folderResult[0].values[0][0] : 'папку';
+            showTempNotification(`✅ Заметка перемещена в "${folderName}"`);
+        }
+
+        function handleAllNotesDrop(event) {
+            event.preventDefault();
+            if (!draggedNoteId) return;
+
+            // Переместить заметку в корень (убрать из папки)
+            db.run('UPDATE notes SET folder_id = NULL, updated_at = ? WHERE id = ?',
+                [Date.now(), draggedNoteId]);
+
+            saveDatabase();
+            loadNotes();
+            loadFolders();
+
+            // Убрать визуальные индикаторы
+            event.currentTarget.style.background = '';
+            event.currentTarget.style.border = '';
+
+            showTempNotification(`✅ Заметка перемещена в "Все заметки"`);
+        }
+
+        function showTempNotification(message) {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 15px 25px;
+                border-radius: 10px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                z-index: 10000;
+                font-weight: 500;
+                animation: slideIn 0.3s ease;
+            `;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 2500);
         }
 
         // 🔗 WIKI-ССЫЛКИ [[название]]
@@ -3067,16 +3745,32 @@
                 document.getElementById('dashboardModal').classList.remove('active');
             });
 
-            // Settings - Import
+            // Settings
             document.getElementById('settingsBtn').addEventListener('click', () => {
-                const action = prompt('Выберите действие:\n1 - Импорт Markdown\n2 - Настройки темы\n3 - Горячие клавиши');
-                if (action === '1') importMarkdown();
-                else if (action === '2') alert('Редактор тем - в разработке');
-                else if (action === '3') showKeyboardShortcuts();
+                const action = prompt('Выберите действие:\n1 - Настройки темы\n2 - Горячие клавиши');
+                if (action === '1') alert('Редактор тем - в разработке');
+                else if (action === '2') showKeyboardShortcuts();
+            });
+
+            // Import
+            document.getElementById('importBtn').addEventListener('click', openImport);
+            document.getElementById('closeImport').addEventListener('click', () => {
+                document.getElementById('importModal').classList.remove('active');
             });
 
             // Switch User
             document.getElementById('switchUserBtn').addEventListener('click', switchUser);
+
+            // Notifications
+            document.getElementById('notificationsBtn').addEventListener('click', requestNotificationPermission);
+
+            // Advanced Search
+            document.getElementById('advancedSearchBtn').addEventListener('click', openAdvancedSearch);
+            document.getElementById('closeAdvancedSearch').addEventListener('click', () => {
+                document.getElementById('advancedSearchModal').classList.remove('active');
+            });
+            document.getElementById('applyFiltersBtn').addEventListener('click', applyAdvancedFilters);
+            document.getElementById('clearFiltersBtn').addEventListener('click', clearAdvancedFilters);
 
             // Bulk operations
             document.getElementById('bulkSelectBtn').addEventListener('click', toggleBulkMode);
