@@ -1088,6 +1088,12 @@
                     <div id="editorChecklistProgress"></div>
                 </div>
 
+                <!-- Обратные ссылки (Backlinks) -->
+                <div id="backlinksSection" style="display: none; margin: 15px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #667eea; border-radius: 5px;">
+                    <h4 style="margin: 0 0 10px 0; color: #667eea; font-size: 14px;">🔗 Обратные ссылки</h4>
+                    <div id="backlinksList" style="font-size: 13px; color: #666;"></div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">
                         <input type="checkbox" id="noteFavorite"> ⭐ Добавить в избранное
@@ -1734,6 +1740,9 @@
             // Обновить счетчик слов
             updateWordCount();
 
+            // Показать обратные ссылки
+            renderBacklinks(id);
+
             // Увеличить счетчик просмотров
             db.run('UPDATE notes SET view_count = view_count + 1 WHERE id = ?', [id]);
             saveDatabase();
@@ -2170,6 +2179,68 @@
             toggleBulkMode();
         }
 
+        // 🔗 ОБРАТНЫЕ ССЫЛКИ (BACKLINKS)
+        function findBacklinks(noteTitle) {
+            if (!noteTitle) return [];
+
+            // Ищем все заметки, которые содержат [[noteTitle]]
+            const pattern = `[[${noteTitle}]]`;
+            const result = db.exec(
+                'SELECT id, title, content FROM notes WHERE user_id = ? AND is_deleted = 0 AND content LIKE ?',
+                [currentUserId, '%' + pattern + '%']
+            );
+
+            if (result.length === 0 || result[0].values.length === 0) return [];
+
+            return result[0].values.map(([id, title, content]) => ({
+                id,
+                title,
+                content
+            }));
+        }
+
+        function renderBacklinks(noteId) {
+            const backlinksSection = document.getElementById('backlinksSection');
+            const backlinksList = document.getElementById('backlinksList');
+
+            if (!noteId) {
+                backlinksSection.style.display = 'none';
+                return;
+            }
+
+            // Получить заголовок текущей заметки
+            const result = db.exec('SELECT title FROM notes WHERE id = ?', [noteId]);
+            if (result.length === 0 || result[0].values.length === 0) {
+                backlinksSection.style.display = 'none';
+                return;
+            }
+
+            const noteTitle = result[0].values[0][0];
+            const backlinks = findBacklinks(noteTitle);
+
+            if (backlinks.length === 0) {
+                backlinksSection.style.display = 'none';
+                return;
+            }
+
+            backlinksSection.style.display = 'block';
+            backlinksList.innerHTML = `
+                <p style="margin: 0 0 10px 0; color: #495057;">
+                    Найдено ссылок на эту заметку: <strong>${backlinks.length}</strong>
+                </p>
+                <ul style="margin: 0; padding-left: 20px; list-style: none;">
+                    ${backlinks.map(link => `
+                        <li style="margin-bottom: 8px;">
+                            <a href="#" onclick="closeEditor(); editNote(${link.id}); return false;"
+                               style="color: #667eea; text-decoration: none; font-weight: 500;">
+                                📝 ${link.title}
+                            </a>
+                        </li>
+                    `).join('')}
+                </ul>
+            `;
+        }
+
         // 🎨 Highlight.js и Mermaid инициализация
         if (typeof hljs !== 'undefined') {
             marked.setOptions({
@@ -2482,6 +2553,7 @@
                 selectColor(template[7]); // color
                 document.getElementById('editorModal').classList.add('active');
                 updateWordCount();
+                renderBacklinks(null); // Скрыть обратные ссылки для нового документа
             }
         }
 
@@ -2639,6 +2711,7 @@
                 document.getElementById('printNoteBtn').style.display = 'none';
                 document.getElementById('editorModal').classList.add('active');
                 updateWordCount(); // Сбросить счетчик
+                renderBacklinks(null); // Скрыть обратные ссылки
             });
 
             document.getElementById('quickAdd').addEventListener('click', () => {
